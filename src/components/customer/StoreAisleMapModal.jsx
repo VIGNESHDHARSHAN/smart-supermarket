@@ -1,6 +1,7 @@
 import React from 'react';
 import { X, MapPin, Navigation, Info, ShoppingBag } from 'lucide-react';
 import { Button } from '../ui/Button';
+import { ProductImage } from '../ui/ProductImage';
 
 export default function StoreAisleMapModal({ isOpen, onClose, selectedProduct, highlightedAisle = null }) {
   if (!isOpen) return null;
@@ -44,7 +45,7 @@ export default function StoreAisleMapModal({ isOpen, onClose, selectedProduct, h
         {selectedProduct && (
           <div className="bg-primary-50 dark:bg-primary-950/60 border-b border-primary-100 dark:border-primary-900 p-4 px-6 flex items-center justify-between">
             <div className="flex items-center gap-4">
-              <img src={selectedProduct.image} alt={selectedProduct.name} className="w-12 h-12 object-cover bg-white dark:bg-slate-800 rounded-lg p-1 border border-primary-200 dark:border-primary-800" />
+              <ProductImage src={selectedProduct.image} alt={selectedProduct.name} category={selectedProduct.category} className="w-12 h-12 object-contain bg-white dark:bg-slate-800 rounded-lg p-1 border border-primary-200 dark:border-primary-800" />
               <div>
                 <div className="text-xs font-bold text-primary-700 dark:text-primary-300 uppercase tracking-wider">Locating Product</div>
                 <div className="font-semibold text-gray-900 dark:text-white">{selectedProduct.name}</div>

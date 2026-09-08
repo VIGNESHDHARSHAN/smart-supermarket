@@ -4,6 +4,7 @@ import { suppliers } from '../../data/mockData';
 import { AvailabilityBadge } from '../../components/ui/Badge';
 import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
+import { ProductImage } from '../../components/ui/ProductImage';
 import { 
   Search, 
   Plus, 
@@ -175,7 +176,7 @@ export default function Inventory() {
                   <tr key={product.id} className="hover:bg-gray-50/80 transition-colors">
                     <td className="py-3 px-5">
                       <div className="flex items-center gap-3">
-                        <img src={product.image} alt={product.name} className="w-10 h-10 object-contain bg-gray-50 rounded-xl p-1 border border-gray-200 flex-shrink-0" />
+                        <ProductImage src={product.image} alt={product.name} category={product.category} productName={product.name} barcode={product.barcode} className="w-10 h-10 object-contain bg-gray-50 rounded-xl p-1 border border-gray-200 flex-shrink-0" />
                         <div>
                           <span className="font-extrabold text-gray-900 text-xs block">{product.name}</span>
                           <span className="text-[10px] text-gray-400 font-mono">{product.barcode} • {product.brand}</span>
@@ -285,7 +286,7 @@ export default function Inventory() {
 
             <form onSubmit={handleConfirmRestock} className="space-y-4 text-xs">
               <div className="p-3 bg-gray-50 rounded-2xl border border-gray-100 flex items-center gap-3">
-                <img src={restockProduct.image} alt={restockProduct.name} className="w-12 h-12 object-contain bg-white rounded-xl p-1 border border-gray-200" />
+                <ProductImage src={restockProduct.image} alt={restockProduct.name} category={restockProduct.category} className="w-12 h-12 object-contain bg-white rounded-xl p-1 border border-gray-200" />
                 <div>
                   <div className="font-extrabold text-gray-900 text-sm">{restockProduct.name}</div>
                   <div className="text-[11px] text-gray-400 font-mono">Current Stock: {restockProduct.stock} • Min: {restockProduct.reorderLevel}</div>

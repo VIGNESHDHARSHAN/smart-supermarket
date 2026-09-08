@@ -28,6 +28,7 @@ import {
   ExternalLink
 } from 'lucide-react';
 import StoreAisleMapModal from '../../components/customer/StoreAisleMapModal';
+import { ProductImage } from '../../components/ui/ProductImage';
 import { isMobileDevice, getUpiDeepLink, DEFAULT_UPI_CONFIG } from '../../lib/payment';
 
 export default function ShoppingList() {
@@ -127,6 +128,13 @@ export default function ShoppingList() {
 
   const handleCheckout = () => {
     if (currentList.length === 0) return;
+
+    if (!currentUser || currentUser.id === 'cust_guest') {
+      alert("🔐 Sign in required! Please sign in or create an account to complete your purchase.");
+      navigate('/customer/login?redirect=/customer/list');
+      return;
+    }
+
     setIsPlacingOrder(true);
 
     const targetAddress = customAddress.trim() || selectedAddress;
@@ -204,10 +212,13 @@ export default function ShoppingList() {
                   to={`/customer/products/${product.id}`} 
                   className="w-24 h-24 bg-gray-50 dark:bg-slate-800 rounded-xl flex-shrink-0 border border-gray-100 dark:border-slate-700 overflow-hidden flex items-center justify-center p-1 group-hover:border-primary-200 transition-colors"
                 >
-                  <img 
+                  <ProductImage 
                     src={product.image} 
                     alt={product.name} 
-                    className="w-full h-full object-cover rounded-lg" 
+                    category={product.category}
+                    productName={product.name}
+                    barcode={product.barcode}
+                    className="w-full h-full object-contain rounded-lg" 
                   />
                 </Link>
 

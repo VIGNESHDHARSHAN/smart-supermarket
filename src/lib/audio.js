@@ -243,27 +243,46 @@ class SoundEngine {
     }
   }
 
-  speakText(text, lang = 'en-US') {
+  speakText(text, lang = 'en-US', callbacks = {}) {
     try {
-      if (typeof window === 'undefined' || !('speechSynthesis' in window)) return;
+      if (typeof window === 'undefined' || !('speechSynthesis' in window)) {
+        callbacks.onEnd?.();
+        return;
+      }
       window.speechSynthesis.cancel(); // Stop any pending speech
       
-      const utterance = new SpeechSynthesisUtterance(text);
+      const cleanText = text.replace(/[*_~`#]/g, '').trim();
+      const utterance = new SpeechSynthesisUtterance(cleanText);
       utterance.lang = lang;
-      utterance.rate = 1.0;
-      utterance.pitch = 1.0;
+      utterance.rate = callbacks.rate || 1.0;
+      utterance.pitch = callbacks.pitch || 1.0;
 
       // Select matching voice if available
       const voices = window.speechSynthesis.getVoices();
-      const match = voices.find(v => v.lang.startsWith(lang.split('-')[0]));
-      if (match) {
-        utterance.voice = match;
+      if (voices && voices.length > 0) {
+        const langPrefix = lang.split('-')[0].toLowerCase();
+        const match = voices.find(v => v.lang.toLowerCase() === lang.toLowerCase()) || 
+                      voices.find(v => v.lang.toLowerCase().startsWith(langPrefix));
+        if (match) {
+          utterance.voice = match;
+        }
       }
 
+      if (callbacks.onStart) utterance.onstart = callbacks.onStart;
+      if (callbacks.onBoundary) utterance.onboundary = callbacks.onBoundary;
+      if (callbacks.onEnd) utterance.onend = callbacks.onEnd;
+      if (callbacks.onError) utterance.onerror = callbacks.onError;
+
+      this.currentUtterance = utterance;
       window.speechSynthesis.speak(utterance);
     } catch (e) {
       console.warn("Speech synthesis error:", e);
+      callbacks.onEnd?.();
     }
+  }
+
+  isSpeaking() {
+    return typeof window !== 'undefined' && 'speechSynthesis' in window && window.speechSynthesis.speaking;
   }
 
   stopSpeaking() {
@@ -278,3 +297,4 @@ class SoundEngine {
 }
 
 export const soundEffects = new SoundEngine();
+

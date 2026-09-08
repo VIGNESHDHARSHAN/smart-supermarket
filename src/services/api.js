@@ -4,7 +4,7 @@
  * with automatic fallback to client-side mock data if server is offline.
  */
 
-const API_BASE_URL = 'http://localhost:5000/api';
+const API_BASE_URL = import.meta.env.VITE_API_URL || (typeof window !== 'undefined' && window.location.hostname === 'localhost' && window.location.port !== '5000' ? 'http://localhost:5000/api' : '/api');
 
 /**
  * Fetch Product Catalog
@@ -101,3 +101,38 @@ export const apiVerifyGatePass = async (passCode) => {
     return null;
   }
 };
+
+/**
+ * Add New Product to Backend Database
+ */
+export const apiAddProduct = async (productPayload) => {
+  try {
+    const res = await fetch(`${API_BASE_URL}/products`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(productPayload)
+    });
+    if (!res.ok) throw new Error('Add product API error');
+    return await res.json();
+  } catch (err) {
+    return null;
+  }
+};
+
+/**
+ * Update Product Stock in Backend Database
+ */
+export const apiUpdateProductStock = async (productId, stock, price) => {
+  try {
+    const res = await fetch(`${API_BASE_URL}/products/${productId}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ stock, price })
+    });
+    if (!res.ok) throw new Error('Update stock API error');
+    return await res.json();
+  } catch (err) {
+    return null;
+  }
+};
+

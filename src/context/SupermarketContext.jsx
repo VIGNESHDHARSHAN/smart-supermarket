@@ -1,7 +1,8 @@
 import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
 import { initialProducts, initialSales, initialTransactions, popularRecipes } from '../data/mockData';
 import { soundEffects } from '../lib/audio';
-import { apiFetchProducts, apiCreateOrder } from '../services/api';
+import { apiFetchProducts, apiCreateOrder, apiAddProduct, apiUpdateProductStock } from '../services/api';
+import { getCategoryFallbackImage, getCuratedProductImage } from '../services/imageService';
 
 const SupermarketContext = createContext();
 
@@ -23,108 +24,24 @@ export const DEFAULT_STORE_SETTINGS = {
 };
 
 
-export const DEMO_CUSTOMERS = [
-  {
-    id: 'cust_1',
-    name: 'Ananya Iyer',
-    email: 'ananya.iyer@gmail.com',
-    phone: '+91 98451 23456',
-    avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=120&h=120&fit=crop&crop=face',
-    address: 'Flat 402, Green Meadows Apt, 12th Main, Koramangala 4th Block, Bengaluru - 560034',
-    landmark: 'Opposite Sony World Signal',
-    loyaltyPoints: 450,
-    savedAddresses: [
-      { id: 'addr_1', label: 'Home', address: 'Flat 402, Green Meadows, 12th Main, Koramangala, Bengaluru - 560034', isDefault: true },
-      { id: 'addr_2', label: 'Office', address: 'Tower B, 4th Floor, Embassy Golf Links, Domlur, Bengaluru - 560071', isDefault: false }
-    ]
-  },
-  {
-    id: 'cust_2',
-    name: 'Vikram Malhotra',
-    email: 'vikram.m@outlook.com',
-    phone: '+91 97412 88990',
-    avatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=120&h=120&fit=crop&crop=face',
-    address: 'Villa 18, Palm Grove Layout, 100ft Road, Indiranagar, Bengaluru - 560038',
-    landmark: 'Near Toit Pub',
-    loyaltyPoints: 820,
-    savedAddresses: [
-      { id: 'addr_3', label: 'Home', address: 'Villa 18, Palm Grove, 100ft Road, Indiranagar, Bengaluru - 560038', isDefault: true }
-    ]
-  },
-  {
-    id: 'cust_3',
-    name: 'Priya Sharma',
-    email: 'priya.sharma@yahoo.com',
-    phone: '+91 98110 55432',
-    avatar: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=120&h=120&fit=crop&crop=face',
-    address: '304, Sunshine Residency, Sector 3, HSR Layout, Bengaluru - 560102',
-    landmark: 'Behind BDA Complex',
-    loyaltyPoints: 290,
-    savedAddresses: [
-      { id: 'addr_4', label: 'Home', address: '304, Sunshine Residency, Sector 3, HSR Layout, Bengaluru - 560102', isDefault: true }
-    ]
-  }
-];
+export const DEFAULT_GUEST_USER = {
+  id: 'guest_user',
+  name: 'Guest Customer',
+  email: 'guest@smartmart.com',
+  phone: '+91 98765 00000',
+  avatar: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=120&h=120&fit=crop&crop=face',
+  address: '100ft Road, Indiranagar, Bengaluru - 560038',
+  loyaltyPoints: 100,
+  savedAddresses: [
+    { id: 'addr_guest', label: 'Home', address: '100ft Road, Indiranagar, Bengaluru - 560038', isDefault: true }
+  ]
+};
 
-const INITIAL_ORDERS = [
-  {
-    id: 'ORD-88210',
-    type: 'DELIVERY',
-    status: 'OUT_FOR_DELIVERY',
-    customerId: 'cust_1',
-    customerName: 'Ananya Iyer',
-    customerPhone: '+91 98451 23456',
-    deliveryAddress: 'Flat 402, Green Meadows Apt, 12th Main, Koramangala 4th Block, Bengaluru',
-    deliverySpeed: 'EXPRESS',
-    deliveryInstructions: 'Please leave at the door and ring the bell',
-    createdAt: new Date(Date.now() - 15 * 60 * 1000).toISOString(),
-    etaMinutes: 8,
-    otp: '4829',
-    paymentMode: 'UPI',
-    items: [
-      { id: '1', name: 'India Gate Basmati Rice 5kg', price: 650, quantity: 1, unit: '5kg', image: 'https://images.unsplash.com/photo-1586201375761-83865001e31c?w=500&auto=format&fit=crop&q=80', aisle: 1, shelf: 1 },
-      { id: '6', name: 'Amul Taaza Milk 500ml', price: 27, quantity: 2, unit: '500ml', image: 'https://images.unsplash.com/photo-1550583724-b2692b85b150?w=500&auto=format&fit=crop&q=80', aisle: 6, shelf: 1 },
-      { id: '26', name: 'Farm Fresh Red Onion', price: 40, quantity: 2, unit: '1kg', image: 'https://images.unsplash.com/photo-1508747703725-719777637510?w=500&auto=format&fit=crop&q=80', aisle: 7, shelf: 1 }
-    ],
-    subtotal: 784,
-    discount: 50,
-    deliveryFee: 0,
-    tax: 36.7,
-    grandTotal: 770.7,
-    rider: {
-      name: 'Rajesh Kumar',
-      phone: '+91 98765 43210',
-      rating: 4.9,
-      trips: 1420,
-      bikeNo: 'KA 05 MN 4821',
-      avatar: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=100&h=100&fit=crop&crop=face',
-      progressPercent: 65
-    }
-  },
-  {
-    id: 'ORD-88195',
-    type: 'TAKEAWAY',
-    status: 'READY_FOR_PICKUP',
-    customerId: 'cust_1',
-    customerName: 'Ananya Iyer',
-    customerPhone: '+91 98451 23456',
-    pickupCounter: 'Express Pickup Locker #04 (Ground Floor)',
-    lockerPin: '8219',
-    pickupCode: 'TKW-88195',
-    pickupSlot: 'Today, Ready for Immediate Pickup',
-    createdAt: new Date(Date.now() - 40 * 60 * 1000).toISOString(),
-    paymentMode: 'Card',
-    items: [
-      { id: '11', name: 'Coca-Cola 1.25L', price: 65, quantity: 2, unit: '1.25L', image: 'https://images.unsplash.com/photo-1622483767028-3f66f32aef97?w=500&auto=format&fit=crop&q=80', aisle: 5, shelf: 1 },
-      { id: '5', name: 'Maggi 2-Minute Noodles', price: 14, quantity: 4, unit: '70g', image: 'https://images.unsplash.com/photo-1612927601601-6638404737ce?w=500&auto=format&fit=crop&q=80', aisle: 2, shelf: 1 }
-    ],
-    subtotal: 186,
-    discount: 0,
-    deliveryFee: 0,
-    tax: 9.3,
-    grandTotal: 195.3
-  }
-];
+export const DEMO_CUSTOMERS = [DEFAULT_GUEST_USER];
+
+const INITIAL_ORDERS = [];
+
+const SM_CATALOG_VERSION = 'v3_internet_images';
 
 export const SupermarketProvider = ({ children }) => {
   // Store Settings (Tax, delivery rules, hardware timeouts)
@@ -133,25 +50,40 @@ export const SupermarketProvider = ({ children }) => {
     return saved ? { ...DEFAULT_STORE_SETTINGS, ...JSON.parse(saved) } : DEFAULT_STORE_SETTINGS;
   });
 
-  // Products (auto-hydrated with pristine high-definition Unsplash URLs & dietary tags)
+  // Products (hydrated from REST API or store product catalog with version migration)
   const [products, setProducts] = useState(() => {
+    const savedVersion = localStorage.getItem('sm_catalog_version');
     const saved = localStorage.getItem('sm_products');
-    if (saved) {
+
+    if (saved && savedVersion === SM_CATALOG_VERSION) {
       try {
         const parsed = JSON.parse(saved);
-        return initialProducts.map(initP => {
-          const existing = parsed.find(p => p.id === initP.id);
-          return {
-            ...initP,
-            stock: (existing && typeof existing.stock === 'number') ? existing.stock : initP.stock,
-            image: initP.image,
-            dietary: initP.dietary || []
-          };
-        });
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
       } catch (e) {
         return initialProducts;
       }
     }
+
+    // Auto-migrate cached products to new authentic images
+    localStorage.setItem('sm_catalog_version', SM_CATALOG_VERSION);
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          const initialMap = new Map(initialProducts.map(p => [p.id, p.image]));
+          const updated = parsed.map(p => {
+            if (initialMap.has(p.id)) {
+              return { ...p, image: initialMap.get(p.id) };
+            }
+            return p;
+          });
+          localStorage.setItem('sm_products', JSON.stringify(updated));
+          return updated;
+        }
+      } catch (e) {}
+    }
+
+    localStorage.setItem('sm_products', JSON.stringify(initialProducts));
     return initialProducts;
   });
 
@@ -160,31 +92,23 @@ export const SupermarketProvider = ({ children }) => {
     const syncBackendCatalog = async () => {
       const backendProducts = await apiFetchProducts();
       if (backendProducts && backendProducts.length > 0) {
-        setProducts(prev => {
-          return backendProducts.map(bp => {
-            const existing = prev.find(p => p.id === bp.id || p.barcode === bp.barcode);
-            return {
-              ...bp,
-              image: bp.image || (existing ? existing.image : 'https://images.unsplash.com/photo-1542838132-92c53300491e?w=500&auto=format&fit=crop&q=80')
-            };
-          });
-        });
+        setProducts(backendProducts);
       }
     };
     syncBackendCatalog();
   }, []);
 
 
-  // POS Sales
+  // POS Sales (real store sales)
   const [sales, setSales] = useState(() => {
     const saved = localStorage.getItem('sm_sales');
-    return saved ? JSON.parse(saved) : initialSales;
+    return saved ? JSON.parse(saved) : [];
   });
 
   // Transactions
   const [transactions, setTransactions] = useState(() => {
     const saved = localStorage.getItem('sm_transactions');
-    return saved ? JSON.parse(saved) : initialTransactions;
+    return saved ? JSON.parse(saved) : [];
   });
 
   // Cart / Shopping List
@@ -201,16 +125,16 @@ export const SupermarketProvider = ({ children }) => {
     return [];
   });
 
-  // Customer Auth
+  // Customer Auth (Default NULL = Non-logged-in guest visitor on initial web page load)
   const [currentUser, setCurrentUser] = useState(() => {
     const saved = localStorage.getItem('sm_current_user');
-    return saved ? JSON.parse(saved) : DEMO_CUSTOMERS[0];
+    return saved ? JSON.parse(saved) : null;
   });
 
   // Online Orders (Delivery, Take Away, Scan & Go)
   const [orders, setOrders] = useState(() => {
     const saved = localStorage.getItem('sm_orders');
-    return saved ? JSON.parse(saved) : INITIAL_ORDERS;
+    return saved ? JSON.parse(saved) : [];
   });
 
 
@@ -708,7 +632,7 @@ export const SupermarketProvider = ({ children }) => {
     logActivity('SECURITY', `Scan & Go Order Verified`, `Bag check match 100% • Auth by ${staffName}`);
   };
 
-  // Inline Stock Adjuster
+  // Inline Stock Adjuster & REST API Database Sync
   const adjustProductStock = (productId, delta, reason = 'Quick Adjustment') => {
     const targetProduct = products.find(p => p.id === productId);
     if (!targetProduct) return;
@@ -729,6 +653,9 @@ export const SupermarketProvider = ({ children }) => {
     setTransactions(prev => [txn, ...prev]);
     setProducts(prev => prev.map(p => p.id === productId ? { ...p, stock: newStock } : p));
     
+    // Sync stock with REST API SQLite database
+    apiUpdateProductStock(productId, newStock).catch(err => console.warn('Stock update database note:', err));
+
     if (delta > 0) {
       soundEffects.playNotificationPing();
     } else {
@@ -736,6 +663,34 @@ export const SupermarketProvider = ({ children }) => {
     }
 
     logActivity('STOCK', `Stock Adjusted: ${targetProduct.name}`, `${delta > 0 ? '+' : ''}${delta} units (${newStock} remaining)`);
+  };
+
+  // Add New Product to Store Catalog & REST API Database
+  const addNewProduct = (productData) => {
+    const newId = 'PRD-' + Date.now();
+    const formattedProduct = {
+      id: newId,
+      productCode: productData.productCode || newId,
+      barcode: productData.barcode || String(Math.floor(8900000000000 + Math.random() * 900000000000)),
+      name: productData.name,
+      category: productData.category || 'General',
+      price: Number(productData.price) || 0,
+      mrp: Number(productData.mrp) || Number(productData.price) || 0,
+      stock: Number(productData.stock) || 50,
+      unit: productData.unit || '1 unit',
+      aisle: Number(productData.aisle) || 1,
+      shelf: Number(productData.shelf) || 1,
+      image: productData.image && productData.image !== 'https://images.unsplash.com/photo-1542838132-92c53300491e?w=500&auto=format&fit=crop&q=80'
+        ? productData.image
+        : (getCuratedProductImage(productData.name) || getCategoryFallbackImage(productData.category)),
+      dietary: productData.dietary || []
+    };
+
+    setProducts(prev => [formattedProduct, ...prev]);
+    apiAddProduct(formattedProduct).catch(err => console.warn('Add product database note:', err));
+    soundEffects.playSuccessChime();
+    logActivity('STOCK', `New Product Added: ${formattedProduct.name}`, `Aisle ${formattedProduct.aisle} • ₹${formattedProduct.price}`);
+    return formattedProduct;
   };
 
   // Available Promotional Coupons
@@ -884,6 +839,7 @@ export const SupermarketProvider = ({ children }) => {
       triggerGateUnlock,
       verifyScanAndGoPass,
       adjustProductStock,
+      addNewProduct,
       validateCoupon,
       updateStoreSettings,
       resetToDefaultData,

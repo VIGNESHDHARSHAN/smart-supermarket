@@ -4,6 +4,7 @@ import { useSupermarket } from '../../context/SupermarketContext';
 import { useLanguage } from '../../context/LanguageContext';
 import { AvailabilityBadge } from '../../components/ui/Badge';
 import { Button } from '../../components/ui/Button';
+import { ProductImage } from '../../components/ui/ProductImage';
 import { 
   MapPin, 
   ArrowLeft, 
@@ -58,10 +59,13 @@ export default function ProductDetails() {
         
         {/* Product Image Stage */}
         <div className="md:w-1/2 bg-gray-50 dark:bg-slate-800 p-8 flex flex-col items-center justify-center relative min-h-[420px] border-b md:border-b-0 md:border-r border-gray-100 dark:border-slate-700">
-          <img 
+          <ProductImage 
             src={product.image} 
             alt={product.name}
-            className="w-full max-h-[340px] object-cover rounded-2xl shadow-md" 
+            category={product.category}
+            productName={product.name}
+            barcode={product.barcode}
+            className="w-full max-h-[340px] object-contain rounded-2xl shadow-xs" 
           />
           <div className="absolute top-4 left-4">
             <AvailabilityBadge stock={product.stock} reorderLevel={product.reorderLevel} className="text-xs px-3 py-1 font-bold shadow-xs" />

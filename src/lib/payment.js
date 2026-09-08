@@ -178,12 +178,9 @@ export const loadGoogleAuthScript = () => {
  * Triggers Google Sign-In authentication flow
  */
 export const triggerGoogleAuth = async ({ onSuccess, onError, isStaff = false }) => {
-  const loaded = await loadGoogleAuthScript();
-  
-  // Create Google Account user profile object
   const googleUser = {
     id: 'google_user_' + Date.now(),
-    name: isStaff ? 'Dr. Rajesh Verma (Store Manager)' : 'Aarav Sharma',
+    name: isStaff ? 'Dr. Rajesh Verma (Store Manager)' : 'Aarav Sharma (Google User)',
     email: isStaff ? 'rajesh.verma@smartmart.com' : 'aarav.sharma.google@gmail.com',
     avatar: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=120&h=120&fit=crop&crop=face',
     phone: '+91 98450 11223',
@@ -195,22 +192,27 @@ export const triggerGoogleAuth = async ({ onSuccess, onError, isStaff = false })
     ]
   };
 
-  if (loaded && window.google?.accounts?.id) {
-    try {
-      window.google.accounts.id.initialize({
-        client_id: '108234789123-demoapp.apps.googleusercontent.com', // Demo Client ID
-        callback: (response) => {
-          if (onSuccess) onSuccess(googleUser, response);
-        }
-      });
-    } catch (e) {
-      console.warn('Google Identity initialize note:', e);
+  try {
+    const loaded = await loadGoogleAuthScript();
+    if (loaded && window.google?.accounts?.id) {
+      try {
+        window.google.accounts.id.initialize({
+          client_id: '108234789123-demoapp.apps.googleusercontent.com',
+          callback: (response) => {
+            if (onSuccess) onSuccess(googleUser, response);
+          }
+        });
+      } catch (e) {
+        console.warn('Google Identity initialize note:', e);
+      }
     }
+  } catch (err) {
+    console.warn('Google Auth script load error:', err);
   }
 
   // Complete sign-in immediately for seamless user experience
   setTimeout(() => {
     if (onSuccess) onSuccess(googleUser);
-  }, 400);
+  }, 350);
 };
 

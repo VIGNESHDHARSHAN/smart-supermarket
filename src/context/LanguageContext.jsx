@@ -113,6 +113,8 @@ export const TRANSLATIONS = {
     ai_quick_suggestions: 'Quick Suggestions',
     ai_locate_product: 'Show Location on Store Map',
     ai_order_status_title: 'Order Status Inquiry',
+    ai_live_captions: 'Live Captions (CC)',
+
     
     // Recipes
     curated_recipes: 'Chef-Curated Meal Recipes',

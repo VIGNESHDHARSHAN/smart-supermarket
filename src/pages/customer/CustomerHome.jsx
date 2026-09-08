@@ -21,6 +21,7 @@ import {
 } from 'lucide-react';
 import { Button } from '../../components/ui/Button';
 import { AvailabilityBadge } from '../../components/ui/Badge';
+import { ProductImage } from '../../components/ui/ProductImage';
 import StoreAisleMapModal from '../../components/customer/StoreAisleMapModal';
 
 export default function CustomerHome() {
@@ -181,78 +182,100 @@ export default function CustomerHome() {
           </Button>
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-5">
-          {products.slice(0, 10).map((product) => {
-            const inCart = shoppingList.some(item => item.id === product.id);
+        {products.length === 0 ? (
+          <div className="bg-white dark:bg-slate-900 rounded-3xl p-12 border-2 border-dashed border-gray-200 dark:border-slate-800 text-center space-y-4">
+            <div className="w-16 h-16 rounded-3xl bg-purple-50 dark:bg-purple-950/60 text-purple-600 dark:text-purple-400 mx-auto flex items-center justify-center">
+              <Package className="w-8 h-8" />
+            </div>
+            <div className="space-y-1">
+              <h3 className="text-lg font-black text-gray-900 dark:text-white">Store Catalog Ready for Setup</h3>
+              <p className="text-xs text-gray-500 dark:text-gray-400 max-w-md mx-auto">
+                Your store catalog is clean and ready to be populated with your local supermarket's inventory.
+              </p>
+            </div>
+            <Link to="/staff/products">
+              <Button className="bg-purple-700 hover:bg-purple-800 text-white font-bold text-xs px-5 py-2.5 rounded-xl shadow-sm inline-flex items-center gap-2">
+                <Plus className="w-4 h-4" /> Add First Product to Catalog
+              </Button>
+            </Link>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-5">
+            {products.slice(0, 10).map((product) => {
+              const inCart = shoppingList.some(item => item.id === product.id);
 
-            return (
-              <div 
-                key={product.id}
-                className="bg-white dark:bg-slate-900 rounded-2xl shadow-xs border border-gray-200 dark:border-slate-800 overflow-hidden hover:shadow-lg hover:border-primary-300 dark:hover:border-primary-700 transition-all group flex flex-col justify-between"
-              >
-                <div>
-                  {/* Image & Badges */}
-                  <div className="aspect-square bg-gray-50 dark:bg-slate-800 overflow-hidden relative flex items-center justify-center p-2">
-                    <img 
-                      src={product.image} 
-                      alt={product.name}
-                      onClick={() => navigate(`/customer/products/${product.id}`)}
-                      className="w-full h-full object-cover rounded-xl group-hover:scale-105 transition-transform duration-300 cursor-pointer" 
-                    />
-                    <div className="absolute top-3 right-3">
-                      <AvailabilityBadge stock={product.stock} reorderLevel={product.reorderLevel} />
+              return (
+                <div 
+                  key={product.id}
+                  className="bg-white dark:bg-slate-900 rounded-2xl shadow-xs border border-gray-200 dark:border-slate-800 overflow-hidden hover:shadow-lg hover:border-primary-300 dark:hover:border-primary-700 transition-all group flex flex-col justify-between"
+                >
+                  <div>
+                    {/* Image & Badges */}
+                    <div className="aspect-square bg-gray-50 dark:bg-slate-800 overflow-hidden relative flex items-center justify-center p-2">
+                      <ProductImage 
+                        src={product.image} 
+                        alt={product.name}
+                        category={product.category}
+                        productName={product.name}
+                        barcode={product.barcode}
+                        onClick={() => navigate(`/customer/products/${product.id}`)}
+                        className="w-full h-full object-contain rounded-xl group-hover:scale-105 transition-transform duration-300 cursor-pointer" 
+                      />
+                      <div className="absolute top-3 right-3">
+                        <AvailabilityBadge stock={product.stock} reorderLevel={product.reorderLevel} />
+                      </div>
+
+                      {/* Aisle Locator Badge */}
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setMapModalProduct(product);
+                        }}
+                        className="absolute bottom-3 left-3 bg-white/90 dark:bg-slate-900/90 backdrop-blur-xs hover:bg-white dark:hover:bg-slate-900 text-gray-700 dark:text-gray-200 text-[10px] font-bold px-2 py-1 rounded-lg border border-gray-200 dark:border-slate-700 shadow-2xs flex items-center gap-1 transition-colors"
+                        title="View on store map"
+                      >
+                        <MapPin className="w-3 h-3 text-primary-600 dark:text-primary-400" />
+                        {t('aisle', 'Aisle')} {product.aisle}
+                      </button>
                     </div>
 
-                    {/* Aisle Locator Badge */}
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setMapModalProduct(product);
-                      }}
-                      className="absolute bottom-3 left-3 bg-white/90 dark:bg-slate-900/90 backdrop-blur-xs hover:bg-white dark:hover:bg-slate-900 text-gray-700 dark:text-gray-200 text-[10px] font-bold px-2 py-1 rounded-lg border border-gray-200 dark:border-slate-700 shadow-2xs flex items-center gap-1 transition-colors"
-                      title="View on store map"
-                    >
-                      <MapPin className="w-3 h-3 text-primary-600 dark:text-primary-400" />
-                      {t('aisle', 'Aisle')} {product.aisle}
-                    </button>
-                  </div>
-
-                  {/* Info */}
-                  <div className="p-4">
-                    <div className="text-[10px] font-bold text-primary-600 dark:text-primary-400 uppercase tracking-wider mb-1">
-                      {product.category}
+                    {/* Info */}
+                    <div className="p-4">
+                      <div className="text-[10px] font-bold text-primary-600 dark:text-primary-400 uppercase tracking-wider mb-1">
+                        {product.category}
+                      </div>
+                      <h3 
+                        onClick={() => navigate(`/customer/products/${product.id}`)}
+                        className="font-bold text-gray-900 dark:text-white text-sm line-clamp-2 min-h-[40px] hover:text-primary-600 dark:hover:text-primary-400 cursor-pointer transition-colors"
+                      >
+                        {product.name}
+                      </h3>
+                      <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">{product.brand} • {product.unit}</p>
                     </div>
-                    <h3 
-                      onClick={() => navigate(`/customer/products/${product.id}`)}
-                      className="font-bold text-gray-900 dark:text-white text-sm line-clamp-2 min-h-[40px] hover:text-primary-600 dark:hover:text-primary-400 cursor-pointer transition-colors"
+                  </div>
+
+                  {/* Price & Add to Cart */}
+                  <div className="p-4 pt-0 flex items-center justify-between">
+                    <span className="font-extrabold text-lg text-gray-900 dark:text-white">₹{product.price}</span>
+                    
+                    <Button
+                      size="sm"
+                      variant={inCart ? "outline" : "default"}
+                      className={inCart ? "text-primary-700 dark:text-primary-300 border-primary-300 dark:border-primary-700 bg-primary-50 dark:bg-primary-950/60 text-xs" : "text-xs font-bold"}
+                      onClick={() => addToShoppingList(product, 1)}
                     >
-                      {product.name}
-                    </h3>
-                    <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">{product.brand} • {product.unit}</p>
+                      {inCart ? (
+                        <span className="flex items-center gap-1">✓ {t('added', 'Added')}</span>
+                      ) : (
+                        <span className="flex items-center gap-1"><Plus className="w-3.5 h-3.5" /> {t('add_to_cart', 'Add')}</span>
+                      )}
+                    </Button>
                   </div>
                 </div>
-
-                {/* Price & Add to Cart */}
-                <div className="p-4 pt-0 flex items-center justify-between">
-                  <span className="font-extrabold text-lg text-gray-900 dark:text-white">₹{product.price}</span>
-                  
-                  <Button
-                    size="sm"
-                    variant={inCart ? "outline" : "default"}
-                    className={inCart ? "text-primary-700 dark:text-primary-300 border-primary-300 dark:border-primary-700 bg-primary-50 dark:bg-primary-950/60 text-xs" : "text-xs font-bold"}
-                    onClick={() => addToShoppingList(product, 1)}
-                  >
-                    {inCart ? (
-                      <span className="flex items-center gap-1">✓ {t('added', 'Added')}</span>
-                    ) : (
-                      <span className="flex items-center gap-1"><Plus className="w-3.5 h-3.5" /> {t('add_to_cart', 'Add')}</span>
-                    )}
-                  </Button>
-                </div>
-              </div>
-            );
-          })}
-        </div>
+              );
+            })}
+          </div>
+        )}
       </section>
 
       {/* Chef-Curated Recipes & 1-Click Meal Planner */}

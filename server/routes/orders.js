@@ -1,8 +1,10 @@
 const express = require('express');
 const router = express.Router();
-const { getDb } = require('../config/db');
+const mongoose = require('mongoose');
+const Order = require('../models/Order');
+const Product = require('../models/Product');
 
-// Place new order
+// 1. CREATE NEW ORDER (Checkout / Payment Completion)
 router.post('/', async (req, res) => {
   try {
     const {
@@ -10,79 +12,122 @@ router.post('/', async (req, res) => {
       items = [],
       paymentMode = 'Razorpay',
       transactionId = `TXN_${Date.now()}`,
-      subtotal,
+      subtotal = 0,
       discount = 0,
       deliveryFee = 0,
       tax = 0,
-      grandTotal,
-      selfCheckoutDetails
+      grandTotal = 0,
+      selfCheckoutDetails,
+      customerName = 'Ananya Iyer',
+      customerId = 'cust_1',
     } = req.body;
 
-    const db = await getDb();
     const orderId = 'ORD-' + Math.floor(10000 + Math.random() * 90000);
     const exitPassCode = 'PASS-' + orderId;
     const cartWeight = selfCheckoutDetails?.cartWeight || '0.90 kg';
 
-    await db.run(
-      `INSERT INTO orders (id, type, status, customerId, customerName, paymentMode, transactionId, subtotal, discount, deliveryFee, tax, grandTotal, exitPassCode, cartWeight)
-       VALUES (?, ?, 'COMPLETED', 'cust_1', 'Ananya Iyer', ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [orderId, type, paymentMode, transactionId, subtotal, discount, deliveryFee, tax, grandTotal, exitPassCode, cartWeight]
-    );
+    const normalizedItems = items.map((item) => ({
+      productId: item.id || item.productId || item._id,
+      name: item.name,
+      price: Number(item.price),
+      quantity: Number(item.quantity) || 1,
+      unit: item.unit || '1 unit',
+    }));
 
-    // Save order items & decrement product stock
-    for (const item of items) {
-      await db.run(
-        `INSERT INTO order_items (orderId, productId, productName, price, quantity, unit)
-         VALUES (?, ?, ?, ?, ?, ?)`,
-        [orderId, item.id, item.name, item.price, item.quantity, item.unit || '1 unit']
-      );
+    // Create Order document
+    const createdOrder = await Order.create({
+      id: orderId,
+      type,
+      status: 'COMPLETED',
+      customerId,
+      customerName,
+      paymentMode,
+      transactionId,
+      subtotal: Number(subtotal),
+      discount: Number(discount),
+      deliveryFee: Number(deliveryFee),
+      tax: Number(tax),
+      grandTotal: Number(grandTotal),
+      exitPassCode,
+      cartWeight,
+      items: normalizedItems,
+    });
 
-      await db.run(
-        'UPDATE products SET stock = MAX(0, stock - ?), salesCount = salesCount + ? WHERE id = ?',
-        [item.quantity, item.quantity, item.id]
-      );
+    // Concurrently decrement stock & increment sales count in Product collection
+    for (const item of normalizedItems) {
+      const isObjectId = mongoose.Types.ObjectId.isValid(item.productId);
+      await Product.findOneAndUpdate(
+        { $or: [...(isObjectId ? [{ _id: item.productId }] : []), { id: item.productId }] },
+        {
+          $inc: { stock: -item.quantity, salesCount: item.quantity },
+        }
+      ).catch((e) => console.warn('Could not update stock for product:', item.productId, e.message));
     }
-
-    const createdOrder = await db.get('SELECT * FROM orders WHERE id = ?', [orderId]);
-    createdOrder.items = items;
 
     res.status(201).json({
       message: 'Order created successfully',
       orderId,
-      order: createdOrder
+      order: createdOrder,
     });
   } catch (err) {
+    console.error('Error creating order:', err.message);
     res.status(500).json({ error: err.message });
   }
 });
 
-// Fetch Customer Orders / All Orders
+// 2. FETCH ALL ORDERS / CUSTOMER ORDERS
 router.get('/', async (req, res) => {
   try {
-    const db = await getDb();
-    const orders = await db.all('SELECT * FROM orders ORDER BY createdAt DESC');
+    const { customerId } = req.query;
+    const query = customerId ? { customerId } : {};
+    const orders = await Order.find(query).sort({ createdAt: -1 });
+    res.json(orders);
+  } catch (err) {
+    console.error('Error fetching orders:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
 
-    for (const order of orders) {
-      order.items = await db.all('SELECT * FROM order_items WHERE orderId = ?', [order.id]);
+// 3. FETCH SINGLE ORDER
+router.get('/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const isObjectId = mongoose.Types.ObjectId.isValid(id);
+
+    const order = await Order.findOne({
+      $or: [...(isObjectId ? [{ _id: id }] : []), { id }],
+    });
+
+    if (!order) {
+      return res.status(404).json({ error: `Order ${id} not found` });
     }
 
-    res.json(orders);
+    res.json(order);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
 
-// Update Order Status (Fulfillment & Dispatch)
+// 4. UPDATE ORDER STATUS (Fulfillment / Dispatch)
 router.patch('/:id/status', async (req, res) => {
   try {
     const { id } = req.params;
     const { status } = req.body;
-    const db = await getDb();
+    const isObjectId = mongoose.Types.ObjectId.isValid(id);
 
-    await db.run('UPDATE orders SET status = ? WHERE id = ?', [status, id]);
-    const updated = await db.get('SELECT * FROM orders WHERE id = ?', [id]);
+    const updated = await Order.findOneAndUpdate(
+      { $or: [...(isObjectId ? [{ _id: id }] : []), { id }] },
+      { $set: { status } },
+      { new: true }
+    );
+
+    if (!updated) {
+      return res.status(404).json({ error: `Order ${id} not found` });
+    }
+
     res.json(updated);
   } catch (err) {
+    console.error('Error updating order status:', err.message);
     res.status(500).json({ error: err.message });
   }
 });

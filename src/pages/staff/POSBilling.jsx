@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { useSupermarket, DEMO_CUSTOMERS } from '../../context/SupermarketContext';
 import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
+import { ProductImage } from '../../components/ui/ProductImage';
 import { 
   Search, 
   Plus, 
@@ -373,7 +374,7 @@ export default function POSBilling() {
                     )}
 
                     <div className="flex items-center gap-2.5">
-                      <img src={product.image} alt={product.name} className="w-10 h-10 object-contain bg-white rounded-xl p-1 border border-gray-100 flex-shrink-0" />
+                      <ProductImage src={product.image} alt={product.name} category={product.category} className="w-10 h-10 object-contain bg-white rounded-xl p-1 border border-gray-100 flex-shrink-0" />
                       <div className="truncate">
                         <div className="font-extrabold text-xs text-gray-900 truncate group-hover:text-primary-700">{product.name}</div>
                         <div className="text-[10px] text-gray-400 font-mono">₹{product.price} • {product.unit}</div>

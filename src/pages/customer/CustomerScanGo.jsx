@@ -38,6 +38,8 @@ import {
 import { soundEffects } from '../../lib/audio';
 import { isMobileDevice, getUpiDeepLink, DEFAULT_UPI_CONFIG, openRazorpayCheckout } from '../../lib/payment';
 import { useLanguage } from '../../context/LanguageContext';
+import { ProductImage } from '../../components/ui/ProductImage';
+import { fetchProductImageFromInternet } from '../../services/imageService';
 
 export default function CustomerScanGo() {
   const navigate = useNavigate();
@@ -58,7 +60,7 @@ export default function CustomerScanGo() {
   const [soundEnabled, setSoundEnabled] = useState(true);
 
   // Scanner Viewfinder State
-  const [scannerMode, setScannerMode] = useState('simulated'); // 'simulated' | 'camera'
+  const [scannerMode, setScannerMode] = useState('camera'); // 'camera' | 'simulated'
   const [cameraActive, setCameraActive] = useState(false);
   const [cameraError, setCameraError] = useState(null);
   const [torchOn, setTorchOn] = useState(false);
@@ -254,7 +256,7 @@ export default function CustomerScanGo() {
     handleScanProduct(randomProduct);
   };
 
-  const handleManualBarcodeSubmit = (e) => {
+  const handleManualBarcodeSubmit = async (e) => {
     e.preventDefault();
     if (!barcodeInput.trim()) return;
 
@@ -268,6 +270,24 @@ export default function CustomerScanGo() {
     if (foundProduct) {
       handleScanProduct(foundProduct);
     } else {
+      try {
+        const netRes = await fetchProductImageFromInternet(barcodeInput.trim(), barcodeInput.trim(), 'Groceries');
+        if (netRes && netRes.imageUrl) {
+          const autoProduct = {
+            id: 'PRD-EXT-' + Date.now(),
+            barcode: barcodeInput.trim(),
+            name: isNaN(barcodeInput.trim()) ? barcodeInput.trim() : `Retail Product (${barcodeInput.trim()})`,
+            category: 'Groceries',
+            price: 99,
+            unit: '1 unit',
+            aisle: 1,
+            shelf: 1,
+            image: netRes.imageUrl
+          };
+          handleScanProduct(autoProduct);
+          return;
+        }
+      } catch (err) {}
       alert(`No product found matching barcode or search term "${barcodeInput}".`);
       setBarcodeInput('');
     }
@@ -335,6 +355,11 @@ export default function CustomerScanGo() {
   // Open Self-Checkout Modal
   const handleOpenCheckout = () => {
     if (scannedCart.length === 0) return;
+    if (!currentUser || currentUser.id === 'cust_guest') {
+      alert("🔐 Sign in required! Please sign in or create an account to complete your self-checkout.");
+      navigate('/customer/login?redirect=/customer/scan');
+      return;
+    }
     setIsCheckoutModalOpen(true);
     setCheckoutStep('payment');
   };
@@ -605,9 +630,15 @@ export default function CustomerScanGo() {
               )}
 
               {/* Real Camera Stream or Animated Simulated Camera */}
-              {scannerMode === 'camera' && cameraActive ? (
-                <video ref={videoRef} className="w-full h-full object-cover" autoPlay playsInline muted />
-              ) : (
+              <video 
+                ref={videoRef} 
+                className={`w-full h-full object-cover ${scannerMode === 'camera' ? 'block' : 'hidden'}`} 
+                autoPlay 
+                playsInline 
+                muted 
+              />
+
+              {scannerMode !== 'camera' && (
                 <div className="absolute inset-0 bg-gradient-to-b from-charcoal-900/60 to-charcoal-950 flex flex-col items-center justify-center">
                   <div className="relative">
                     <ScanBarcode className="w-20 h-20 text-white/30 mb-2 animate-pulse" />
@@ -758,7 +789,7 @@ export default function CustomerScanGo() {
                 >
                   <div className="space-y-2">
                     <div className="relative aspect-square bg-white rounded-xl p-2 border border-gray-100 overflow-hidden flex items-center justify-center">
-                      <img src={product.image} alt={product.name} className="w-full h-full object-contain" />
+                      <ProductImage src={product.image} alt={product.name} category={product.category} className="w-full h-full object-contain" />
                       <span className="absolute top-1.5 left-1.5 text-[9px] font-black bg-charcoal-900 text-white px-1.5 py-0.2 rounded-md">
                         Aisle {product.aisle}
                       </span>
@@ -834,9 +865,10 @@ export default function CustomerScanGo() {
                 {scannedCart.map((item) => (
                   <div key={item.id} className="py-2.5 flex items-center justify-between text-xs group">
                     <div className="flex items-center gap-3">
-                      <img 
+                      <ProductImage 
                         src={item.image} 
                         alt={item.name} 
+                        category={item.category}
                         className="w-11 h-11 object-contain bg-gray-50 rounded-xl p-1 border border-gray-100 flex-shrink-0" 
                       />
                       <div>
@@ -977,9 +1009,10 @@ export default function CustomerScanGo() {
           <div className="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl space-y-4 border border-gray-100 animate-in fade-in zoom-in-95">
             <div className="flex items-start justify-between">
               <div className="flex items-center gap-3">
-                <img 
+                <ProductImage 
                   src={inspectingItem.image} 
                   alt={inspectingItem.name} 
+                  category={inspectingItem.category}
                   className="w-14 h-14 object-contain bg-gray-50 rounded-2xl p-1 border border-gray-200" 
                 />
                 <div>

@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { 
   Bot, 
   Sparkles, 
@@ -8,23 +8,24 @@ import {
   MicOff, 
   Volume2, 
   VolumeX, 
-  ShoppingBag, 
   MapPin, 
   Truck, 
   Plus, 
   Check, 
-  ArrowRight, 
-  Utensils, 
-  RotateCcw,
   Navigation,
-  Flame,
-  Clock,
-  Heart
+  Subtitles,
+  AlertCircle,
+  RotateCcw,
+  ArrowRight
 } from 'lucide-react';
+
+
+
 import { useSupermarket } from '../../context/SupermarketContext';
 import { useLanguage } from '../../context/LanguageContext';
 import { useTheme } from '../../context/ThemeContext';
 import { soundEffects } from '../../lib/audio';
+import { generateAIResponse } from '../../lib/aiChatEngine';
 import StoreAisleMapModal from './StoreAisleMapModal';
 
 export default function AIChatbotModal({ isOpen, onClose }) {
@@ -44,6 +45,19 @@ export default function AIChatbotModal({ isOpen, onClose }) {
   const [inputMessage, setInputMessage] = useState('');
   const [isListening, setIsListening] = useState(false);
   const [voiceEnabled, setVoiceEnabled] = useState(storeSettings?.voiceAssistantEnabled !== false);
+  const [liveCaptionEnabled, setLiveCaptionEnabled] = useState(true);
+  
+  // Live caption state
+  const [liveCaption, setLiveCaption] = useState({
+    active: false,
+    type: 'ai', // 'ai' | 'user'
+    text: '',
+    isInterim: false
+  });
+  
+  // Voice error state
+  const [voiceError, setVoiceError] = useState(null);
+
   const [messages, setMessages] = useState(() => [
     {
       id: 'm_welcome',
@@ -51,11 +65,11 @@ export default function AIChatbotModal({ isOpen, onClose }) {
       text: t('ai_greeting', 'Hello! I am your SmartMart AI Shopping Assistant. How can I help you today?'),
       timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
       suggestions: [
-        '🍛 Paneer Butter Masala Recipe',
         '🥛 Where is Fresh Milk?',
+        '🍛 Paneer Butter Masala Recipe',
         '🥦 Organic Veggies & Greens',
         '🛵 Track My Order',
-        '☕ Tea & Coffee Aisle'
+        '⏰ Store Timings & Payment'
       ]
     }
   ]);
@@ -64,68 +78,131 @@ export default function AIChatbotModal({ isOpen, onClose }) {
 
   const messagesEndRef = useRef(null);
   const recognitionRef = useRef(null);
+  const silenceTimerRef = useRef(null);
+  const captionClearTimerRef = useRef(null);
+
+  // Audio level visualizer state for real microphone input
+  const [audioLevel, setAudioLevel] = useState(0);
+  const [showVoiceHub, setShowVoiceHub] = useState(false);
+  const audioContextRef = useRef(null);
+  const analyserRef = useRef(null);
+  const audioStreamRef = useRef(null);
+  const animFrameRef = useRef(null);
 
   // Auto-scroll to bottom of conversation
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, isTyping]);
 
-  // Setup Speech Recognition if available
-  useEffect(() => {
-    if (typeof window !== 'undefined') {
-      const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-      if (SpeechRecognition) {
-        const recognition = new SpeechRecognition();
-        recognition.continuous = false;
-        recognition.interimResults = false;
-        recognition.lang = currentLangMeta?.speechLang || 'en-US';
-
-        recognition.onresult = (event) => {
-          const transcript = event.results[0][0].transcript;
-          if (transcript) {
-            setInputMessage(transcript);
-            handleSendMessage(transcript);
-          }
-          setIsListening(false);
-        };
-
-        recognition.onerror = () => {
-          setIsListening(false);
-        };
-
-        recognition.onend = () => {
-          setIsListening(false);
-        };
-
-        recognitionRef.current = recognition;
-      }
+  // Clean up all audio streams and speech on unmount/close
+  const cleanupAudioStreams = useCallback(() => {
+    if (animFrameRef.current) {
+      cancelAnimationFrame(animFrameRef.current);
     }
-  }, [language, currentLangMeta]);
-
-  const toggleListening = () => {
-    if (!recognitionRef.current) {
-      alert("Voice input is not supported in this browser. Please type your message.");
-      return;
+    if (audioStreamRef.current) {
+      audioStreamRef.current.getTracks().forEach(track => track.stop());
+      audioStreamRef.current = null;
     }
-    if (isListening) {
-      recognitionRef.current.stop();
-      setIsListening(false);
-    } else {
+    if (audioContextRef.current && audioContextRef.current.state !== 'closed') {
       try {
-        recognitionRef.current.lang = currentLangMeta?.speechLang || 'en-US';
-        recognitionRef.current.start();
-        setIsListening(true);
-        soundEffects.playNotificationPing();
-      } catch (e) {
-        console.warn("Speech recognition start error:", e);
-        setIsListening(false);
+        audioContextRef.current.close();
+      } catch (e) {}
+      audioContextRef.current = null;
+    }
+    setAudioLevel(0);
+  }, []);
+
+  // Clean up speech synthesis & recognition on modal close or unmount
+  useEffect(() => {
+    if (!isOpen) {
+      soundEffects.stopSpeaking();
+      if (recognitionRef.current && isListening) {
+        try {
+          recognitionRef.current.stop();
+        } catch (e) {}
       }
+      cleanupAudioStreams();
+      setIsListening(false);
+      setShowVoiceHub(false);
+      setLiveCaption({ active: false, type: 'ai', text: '', isInterim: false });
+      setVoiceError(null);
+    }
+    return () => {
+      cleanupAudioStreams();
+    };
+  }, [isOpen, isListening, cleanupAudioStreams]);
+
+  // Start real-time audio analysis from device microphone
+  const startAudioVisualizer = async () => {
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) return null;
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      audioStreamRef.current = stream;
+
+      const AudioCtx = window.AudioContext || window.webkitAudioContext;
+      if (AudioCtx) {
+        const audioCtx = new AudioCtx();
+        audioContextRef.current = audioCtx;
+        const source = audioCtx.createMediaStreamSource(stream);
+        const analyser = audioCtx.createAnalyser();
+        analyser.fftSize = 64;
+        source.connect(analyser);
+        analyserRef.current = analyser;
+
+        const bufferLength = analyser.frequencyBinCount;
+        const dataArray = new Uint8Array(bufferLength);
+
+        const updateMeter = () => {
+          if (!analyserRef.current) return;
+          analyserRef.current.getByteFrequencyData(dataArray);
+          let sum = 0;
+          for (let i = 0; i < bufferLength; i++) {
+            sum += dataArray[i];
+          }
+          const average = sum / bufferLength;
+          setAudioLevel(Math.min(100, Math.round((average / 128) * 100)));
+          animFrameRef.current = requestAnimationFrame(updateMeter);
+        };
+
+        updateMeter();
+      }
+      return stream;
+    } catch (e) {
+      console.warn("Audio visualizer stream error:", e);
+      return null;
     }
   };
 
-  const handleSendMessage = (textToSend) => {
+  // Handle Speech Recognition Result & Lifecycle
+  const stopListening = useCallback(() => {
+    if (silenceTimerRef.current) {
+      clearTimeout(silenceTimerRef.current);
+    }
+    if (recognitionRef.current) {
+      try {
+        recognitionRef.current.stop();
+      } catch (e) {
+        console.warn("Recognition stop error:", e);
+      }
+    }
+    cleanupAudioStreams();
+    setIsListening(false);
+  }, [cleanupAudioStreams]);
+
+  const handleSendMessage = useCallback((textToSend) => {
     const query = (textToSend || inputMessage).trim();
     if (!query) return;
+
+    // Stop active listening and speech when user sends
+    stopListening();
+    soundEffects.stopSpeaking();
+    setShowVoiceHub(false);
+
+    // Special chip trigger: Open 2D Store Map
+    if (query.includes('2D Store Map') || query.includes('Store Map')) {
+      const defaultProduct = products[0];
+      setMapModalProduct(defaultProduct);
+    }
 
     soundEffects.playScanBeep();
     const userMsg = {
@@ -138,212 +215,223 @@ export default function AIChatbotModal({ isOpen, onClose }) {
     setMessages(prev => [...prev, userMsg]);
     setInputMessage('');
     setIsTyping(true);
+    setVoiceError(null);
+
+    // Show User Live Caption briefly if CC enabled
+    if (liveCaptionEnabled) {
+      setLiveCaption({
+        active: true,
+        type: 'user',
+        text: query,
+        isInterim: false
+      });
+      clearTimeout(captionClearTimerRef.current);
+      captionClearTimerRef.current = setTimeout(() => {
+        setLiveCaption(prev => prev.type === 'user' ? { ...prev, active: false } : prev);
+      }, 3000);
+    }
 
     setTimeout(() => {
-      const aiResponse = generateAIResponse(query);
+      const aiResponse = generateAIResponse(query, {
+        products,
+        orders,
+        popularRecipes,
+        shoppingList,
+        language,
+        t
+      });
+
       setIsTyping(false);
       setMessages(prev => [...prev, aiResponse]);
 
+      const spokenText = aiResponse.spokenText || aiResponse.text;
+
+      // Update Live Caption for AI
+      if (liveCaptionEnabled) {
+        setLiveCaption({
+          active: true,
+          type: 'ai',
+          text: spokenText,
+          isInterim: false
+        });
+      }
+
       // Speak response if voiceEnabled
-      if (voiceEnabled && aiResponse.spokenText) {
-        soundEffects.speakText(aiResponse.spokenText, currentLangMeta?.speechLang || 'en-US');
+      if (voiceEnabled && spokenText) {
+        soundEffects.speakText(spokenText, currentLangMeta?.speechLang || 'en-US', {
+          onStart: () => {
+            if (liveCaptionEnabled) {
+              setLiveCaption({
+                active: true,
+                type: 'ai',
+                text: spokenText,
+                isInterim: false
+              });
+            }
+          },
+          onEnd: () => {
+            clearTimeout(captionClearTimerRef.current);
+            captionClearTimerRef.current = setTimeout(() => {
+              setLiveCaption(prev => prev.type === 'ai' ? { ...prev, active: false } : prev);
+            }, 4000);
+          },
+          onError: () => {
+            clearTimeout(captionClearTimerRef.current);
+            captionClearTimerRef.current = setTimeout(() => {
+              setLiveCaption(prev => prev.type === 'ai' ? { ...prev, active: false } : prev);
+            }, 3000);
+          }
+        });
       } else {
         soundEffects.playNotificationPing();
+        clearTimeout(captionClearTimerRef.current);
+        captionClearTimerRef.current = setTimeout(() => {
+          setLiveCaption(prev => prev.type === 'ai' ? { ...prev, active: false } : prev);
+        }, 5000);
       }
-    }, 600);
-  };
+    }, 500);
+  }, [inputMessage, products, orders, popularRecipes, shoppingList, language, t, liveCaptionEnabled, voiceEnabled, currentLangMeta, stopListening]);
 
-  // AI Natural Language Reasoning Engine
-  const generateAIResponse = (query) => {
-    const qLower = query.toLowerCase();
-    const timestamp = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  // Initialize Speech Recognition & Audio Capture
+  const startListening = async () => {
+    setVoiceError(null);
+    soundEffects.stopSpeaking();
 
-    // 1. Recipe & Meal Planning Request
-    const matchedRecipe = popularRecipes.find(r => 
-      qLower.includes(r.name.toLowerCase()) || 
-      (r.nameHi && qLower.includes(r.nameHi.toLowerCase())) ||
-      (r.nameTa && qLower.includes(r.nameTa.toLowerCase())) ||
-      (r.nameTe && qLower.includes(r.nameTe.toLowerCase())) ||
-      (r.nameEs && qLower.includes(r.nameEs.toLowerCase())) ||
-      qLower.includes('paneer') || 
-      qLower.includes('pulao') || 
-      qLower.includes('biryani') || 
-      qLower.includes('smoothie') || 
-      qLower.includes('recipe') || 
-      qLower.includes('cook') || 
-      qLower.includes('meal')
-    );
+    // Start real-time hardware microphone visualizer
+    await startAudioVisualizer();
 
-    if (matchedRecipe || qLower.includes('recipe') || qLower.includes('cook')) {
-      const recipe = matchedRecipe || popularRecipes[0];
-      const recipeProducts = products.filter(p => recipe.productIds.includes(p.id));
-      const totalCost = recipeProducts.reduce((sum, p) => sum + p.price, 0);
+    const SpeechRecognition = typeof window !== 'undefined' 
+      ? (window.SpeechRecognition || window.webkitSpeechRecognition) 
+      : null;
 
-      let spoken = language === 'hi'
-        ? `यहाँ ${recipe.name} की रेसिपी सामग्री है। कुल लागत ₹${totalCost} है। आप एक क्लिक में सभी सामग्री कार्ट में जोड़ सकते हैं।`
-        : language === 'ta'
-        ? `இதோ ${recipe.name} செய்முறை பொருட்கள். மொத்த விலை ₹${totalCost}. ஒரு கிளிக்கில் அனைத்தையும் கூடையில் சேர்க்கலாம்.`
-        : language === 'te'
-        ? `ఇక్కడ ${recipe.name} వంటకం పదార్థాలు ఉన్నాయి. మొత్తం ఖర్చు ₹${totalCost}. ఒకే క్లిక్‌తో కార్ట్‌కు జోడించవచ్చు.`
-        : language === 'es'
-        ? `Aquí tienes los ingredientes para ${recipe.name}. Costo total ₹${totalCost}. Puedes agregarlos al carrito en un clic.`
-        : `Here are the ingredients for ${recipe.name}. Total cost is ₹${totalCost}. You can add all items directly to your cart in 1 click.`;
-
-      return {
-        id: 'b_' + Date.now(),
-        sender: 'bot',
-        type: 'recipe',
-        recipe,
-        recipeProducts,
-        totalCost,
-        text: `I found the perfect chef recipe: **${recipe.name}** (${recipe.time} • ${recipe.servings}). Here are the fresh ingredients from our aisles:`,
-        spokenText: spoken,
-        timestamp,
-        suggestions: [
-          '🍚 Fragrant Vegetable Pulao',
-          '🥤 Superfood Smoothie',
-          '🥛 Where is Milk?',
-          '🛵 Track My Order'
-        ]
-      };
+    if (!SpeechRecognition) {
+      setVoiceError("Your browser doesn't support Google Speech API. You can use our Voice Assistant Hub below!");
+      setShowVoiceHub(true);
+      return;
     }
 
-    // 2. Order Tracking & Delivery Inquiry
-    if (qLower.includes('order') || qLower.includes('track') || qLower.includes('delivery') || qLower.includes('rider') || qLower.includes('ord-')) {
-      const activeOrder = orders.find(o => !['DELIVERED', 'COLLECTED', 'COMPLETED', 'CANCELLED'].includes(o.status)) || orders[0];
+    try {
+      if (recognitionRef.current) {
+        try { recognitionRef.current.abort(); } catch (e) {}
+      }
+
+      const recognition = new SpeechRecognition();
+      recognition.continuous = false;
+      recognition.interimResults = true;
+      recognition.maxAlternatives = 1;
       
-      if (activeOrder) {
-        let spoken = language === 'hi'
-          ? `आपका ऑर्डर ${activeOrder.id} वर्तमान में ${activeOrder.status} है। अनुमानित समय ${activeOrder.etaMinutes || 10} मिनट है।`
-          : language === 'ta'
-          ? `உங்கள் ஆர்டர் ${activeOrder.id} தற்போது ${activeOrder.status} நிலையில் உள்ளது. வருகை நேரம் ${activeOrder.etaMinutes || 10} நிமிடங்கள்.`
-          : language === 'te'
-          ? `మీ ఆర్డర్ ${activeOrder.id} ప్రస్తుతం ${activeOrder.status} లో ఉంది. డెలివరీ సమయం ${activeOrder.etaMinutes || 10} నిమిషాలు.`
-          : language === 'es'
-          ? `Tu pedido ${activeOrder.id} está actualmente en estado ${activeOrder.status}. Tiempo estimado ${activeOrder.etaMinutes || 10} minutos.`
-          : `Your order ${activeOrder.id} is currently ${activeOrder.status.replace(/_/g, ' ')}. Estimated delivery in ${activeOrder.etaMinutes || 10} minutes.`;
+      const speechLang = currentLangMeta?.speechLang || (typeof navigator !== 'undefined' ? navigator.language : 'en-US');
+      recognition.lang = speechLang;
 
-        return {
-          id: 'b_' + Date.now(),
-          sender: 'bot',
-          type: 'order',
-          order: activeOrder,
-          text: `Here is your latest live order status:`,
-          spokenText: spoken,
-          timestamp,
-          suggestions: [
-            '🍛 What can I cook tonight?',
-            '🍎 Fresh Fruits in Stock',
-            '📍 In-store Map Navigator'
-          ]
-        };
-      }
-    }
-
-    // 3. In-Store Location / Aisle Search
-    if (qLower.includes('where') || qLower.includes('aisle') || qLower.includes('shelf') || qLower.includes('find') || qLower.includes('locate')) {
-      const matched = products.filter(p => 
-        qLower.includes(p.name.toLowerCase()) || 
-        qLower.includes(p.category.toLowerCase()) ||
-        qLower.includes(p.brand.toLowerCase())
-      ).slice(0, 3);
-
-      if (matched.length > 0) {
-        const first = matched[0];
-        let spoken = language === 'hi'
-          ? `${first.name} आइल नंबर ${first.aisle}, शेल्फ ${first.shelf} पर उपलब्ध है।`
-          : language === 'ta'
-          ? `${first.name} பகுதி ${first.aisle}, அடுக்கு ${first.shelf} இல் உள்ளது.`
-          : language === 'te'
-          ? `${first.name} నడవ ${first.aisle}, షెల్ఫ్ ${first.shelf} లో అందుబాటులో ఉంది.`
-          : language === 'es'
-          ? `${first.name} está ubicado en el Pasillo ${first.aisle}, Estante ${first.shelf}.`
-          : `${first.name} is located in Aisle ${first.aisle}, Shelf ${first.shelf}.`;
-
-        return {
-          id: 'b_' + Date.now(),
-          sender: 'bot',
-          type: 'products',
-          products: matched,
-          text: `Found in our supermarket! Here is the exact aisle placement and live stock:`,
-          spokenText: spoken,
-          timestamp,
-          suggestions: [
-            '📍 View on 2D Store Map',
-            '🍛 Paneer Butter Masala',
-            '🛒 Go to My Cart'
-          ]
-        };
-      }
-    }
-
-    // 4. Product / Category Keyword Search
-    const searchMatches = products.filter(p => {
-      return p.name.toLowerCase().includes(qLower) ||
-        p.category.toLowerCase().includes(qLower) ||
-        p.brand.toLowerCase().includes(qLower) ||
-        (p.dietary && p.dietary.some(d => d.toLowerCase().includes(qLower)));
-    }).slice(0, 4);
-
-    if (searchMatches.length > 0) {
-      let spoken = language === 'hi'
-        ? `मुझे आपकी खोज के लिए ${searchMatches.length} उत्पाद मिले हैं।`
-        : language === 'ta'
-        ? `உங்கள் தேடலுக்கு ${searchMatches.length} பொருட்கள் கிடைத்துள்ளன.`
-        : language === 'te'
-        ? `మీ శోధన కోసం ${searchMatches.length} ఉత్పత్తులు దొరికాయి.`
-        : language === 'es'
-        ? `He encontrado ${searchMatches.length} productos para tu búsqueda.`
-        : `I found ${searchMatches.length} items matching your request.`;
-
-      return {
-        id: 'b_' + Date.now(),
-        sender: 'bot',
-        type: 'products',
-        products: searchMatches,
-        text: `Here are the top matches available in our store right now:`,
-        spokenText: spoken,
-        timestamp,
-        suggestions: [
-          '🍛 Suggest a quick dinner recipe',
-          '🛵 Track My Order',
-          '🛒 View Cart'
-        ]
+      recognition.onstart = () => {
+        setIsListening(true);
+        setVoiceError(null);
+        soundEffects.playNotificationPing();
+        if (liveCaptionEnabled) {
+          setLiveCaption({
+            active: true,
+            type: 'user',
+            text: 'Listening to your voice...',
+            isInterim: true
+          });
+        }
       };
+
+      recognition.onresult = (event) => {
+        let interimTranscript = '';
+        let finalTranscript = '';
+
+        for (let i = event.resultIndex; i < event.results.length; ++i) {
+          const item = event.results[i];
+          const transcriptText = item[0]?.transcript || '';
+          if (item.isFinal) {
+            finalTranscript += transcriptText;
+          } else {
+            interimTranscript += transcriptText;
+          }
+        }
+
+        const currentSaid = finalTranscript || interimTranscript;
+        if (currentSaid) {
+          setInputMessage(currentSaid);
+
+          if (liveCaptionEnabled) {
+            setLiveCaption({
+              active: true,
+              type: 'user',
+              text: currentSaid,
+              isInterim: !finalTranscript
+            });
+          }
+        }
+
+        if (finalTranscript && finalTranscript.trim().length > 0) {
+          clearTimeout(silenceTimerRef.current);
+          silenceTimerRef.current = setTimeout(() => {
+            handleSendMessage(finalTranscript.trim());
+          }, 800);
+        }
+      };
+
+      recognition.onerror = (event) => {
+        console.warn("Speech recognition error:", event.error);
+        setLiveCaption(prev => prev.type === 'user' ? { ...prev, active: false } : prev);
+        
+        if (event.error === 'network') {
+          // In Brave or restrictive firewalls, Google speech server is blocked.
+          setVoiceError("Google Speech Server was blocked by your browser/network (e.g. Brave Shields or offline). Select any voice command below or speak with Voice Hub!");
+          setShowVoiceHub(true);
+        } else if (event.error === 'not-allowed' || event.error === 'service-not-allowed') {
+          setVoiceError("Microphone permission was blocked. Please click the lock 🔒 in your browser URL bar to allow microphone.");
+          setShowVoiceHub(true);
+        } else if (event.error === 'no-speech') {
+          setVoiceError("No speech detected. Select a voice prompt below or try speaking again.");
+          setShowVoiceHub(true);
+        } else {
+          setVoiceError(`Voice input: ${event.error}. Use Voice Hub below.`);
+          setShowVoiceHub(true);
+        }
+        setIsListening(false);
+        cleanupAudioStreams();
+      };
+
+      recognition.onend = () => {
+        setIsListening(false);
+        cleanupAudioStreams();
+      };
+
+      recognitionRef.current = recognition;
+      recognition.start();
+    } catch (err) {
+      console.error("Speech recognition startup error:", err);
+      setLiveCaption(prev => prev.type === 'user' ? { ...prev, active: false } : prev);
+      setVoiceError("Could not connect to online speech service. Voice Hub activated below.");
+      setShowVoiceHub(true);
+      setIsListening(false);
+      cleanupAudioStreams();
     }
-
-    // 5. Default General Assistance
-    let defaultReply = language === 'hi'
-      ? 'मैं आपकी पसंदीदा रेसिपी, उत्पाद लोकेशन, लाइव स्टॉक और ऑर्डर ट्रैकिंग में मदद कर सकता हूँ। आप क्या खोजना चाहते हैं?'
-      : language === 'ta'
-      ? 'உங்களுக்கு தேவையான சமையல் பொருட்கள், கடையின் அடுக்கு எண்கள், இருப்பு மற்றும் ஆர்டர் நிலையை நான் அறிய உதவ முடியும்.'
-      : language === 'te'
-      ? 'నేను మీకు వంటకాలు, ఉత్పత్తుల స్థానాలు, స్టాక్ మరియు ఆర్డర్ ట్రాకింగ్‌లో సహాయపడగలను.'
-      : language === 'es'
-      ? 'Puedo ayudarte a encontrar productos, planificar recetas, ubicar pasillos y rastrear tus pedidos en vivo.'
-      : 'I can help you find fresh products, plan recipes with 1-click cart addition, locate in-store aisles, and track live deliveries.';
-
-    return {
-      id: 'b_' + Date.now(),
-      sender: 'bot',
-      text: defaultReply,
-      spokenText: defaultReply,
-      timestamp,
-      suggestions: [
-        '🍛 Paneer Butter Masala Recipe',
-        '🥛 Where is Milk?',
-        '🛵 Live Delivery Status',
-        '🍎 Fresh Fruits Aisle'
-      ]
-    };
   };
+
+  const toggleListening = () => {
+    if (isListening) {
+      stopListening();
+    } else {
+      startListening();
+    }
+  };
+
+  const handleQuickVoicePrompt = (promptText) => {
+    handleSendMessage(promptText);
+    setShowVoiceHub(false);
+  };
+
 
   if (!isOpen) return null;
 
   return (
     <div className="fixed inset-0 z-50 overflow-hidden bg-black/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 animate-in fade-in duration-200">
       
-      <div className="bg-white dark:bg-slate-900 w-full max-w-2xl h-[90vh] max-h-[700px] rounded-3xl shadow-2xl border border-gray-200 dark:border-slate-800 flex flex-col overflow-hidden relative">
+      <div className="bg-white dark:bg-slate-900 w-full max-w-2xl h-[92vh] max-h-[720px] rounded-3xl shadow-2xl border border-gray-200 dark:border-slate-800 flex flex-col overflow-hidden relative">
         
         {/* Chatbot Header */}
         <div className="bg-gradient-to-r from-primary-700 via-primary-600 to-emerald-700 dark:from-primary-950 dark:via-slate-900 dark:to-emerald-950 text-white p-4 sm:p-5 flex items-center justify-between border-b border-primary-500/20 shadow-md">
@@ -360,7 +448,7 @@ export default function AIChatbotModal({ isOpen, onClose }) {
                   {t('ai_genie', 'SmartMart AI Genie')}
                 </h3>
                 <span className="bg-yellow-400 text-charcoal-900 text-[10px] font-black px-2 py-0.5 rounded-full uppercase tracking-wider">
-                  AI v2.5
+                  AI v3.0 NLP
                 </span>
               </div>
               <p className="text-xs text-primary-100/90 flex items-center gap-1.5 mt-0.5">
@@ -370,12 +458,35 @@ export default function AIChatbotModal({ isOpen, onClose }) {
             </div>
           </div>
 
-          <div className="flex items-center gap-1 sm:gap-2">
-            {/* Voice Audio Toggle */}
+          <div className="flex items-center gap-1.5 sm:gap-2">
+            {/* Live Caption (CC) Toggle Button */}
             <button
               onClick={() => {
-                setVoiceEnabled(!voiceEnabled);
-                soundEffects.stopSpeaking();
+                setLiveCaptionEnabled(!liveCaptionEnabled);
+                if (liveCaptionEnabled) {
+                  setLiveCaption(prev => ({ ...prev, active: false }));
+                }
+              }}
+              title={liveCaptionEnabled ? "Live Captions Active (Click to Hide)" : "Enable Live Captions (Subtitles)"}
+              className={`px-2.5 py-1.5 rounded-xl border text-xs font-bold transition-all flex items-center gap-1.5 ${
+                liveCaptionEnabled 
+                  ? 'bg-amber-400 text-slate-900 border-amber-300 shadow-xs' 
+                  : 'bg-white/10 text-white/70 border-white/15 hover:text-white'
+              }`}
+            >
+              <Subtitles className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline font-mono">CC</span>
+              {liveCaptionEnabled && <span className="w-1.5 h-1.5 rounded-full bg-slate-900 animate-pulse"></span>}
+            </button>
+
+            {/* Voice Audio Speaker Output Toggle */}
+            <button
+              onClick={() => {
+                const next = !voiceEnabled;
+                setVoiceEnabled(next);
+                if (!next) {
+                  soundEffects.stopSpeaking();
+                }
               }}
               title={voiceEnabled ? "Voice Output Active" : "Voice Output Muted"}
               className={`p-2 rounded-xl border transition-all ${voiceEnabled ? 'bg-white/20 border-white/30 text-yellow-300' : 'bg-white/5 border-white/10 text-white/60 hover:text-white'}`}
@@ -387,6 +498,7 @@ export default function AIChatbotModal({ isOpen, onClose }) {
             <button
               onClick={() => {
                 soundEffects.stopSpeaking();
+                stopListening();
                 onClose();
               }}
               className="p-2 rounded-xl text-white/80 hover:text-white hover:bg-white/20 transition-colors"
@@ -395,6 +507,91 @@ export default function AIChatbotModal({ isOpen, onClose }) {
             </button>
           </div>
         </div>
+
+        {/* Live Caption Floating Banner Bar (When active and CC enabled) */}
+        {liveCaptionEnabled && liveCaption.active && (
+          <div className="bg-slate-900/95 backdrop-blur-md text-white px-4 py-3 border-b border-primary-500/30 flex items-start gap-3 shadow-lg animate-in slide-in-from-top-2 duration-200 z-10">
+            <div className="flex-shrink-0 mt-0.5">
+              {liveCaption.type === 'ai' ? (
+                <div className="w-7 h-7 rounded-lg bg-primary-600 flex items-center justify-center text-white shadow-xs">
+                  <Bot className="w-4 h-4 text-yellow-300 animate-pulse" />
+                </div>
+              ) : (
+                <div className="w-7 h-7 rounded-lg bg-red-600 flex items-center justify-center text-white animate-pulse shadow-xs">
+                  <Mic className="w-4 h-4" />
+                </div>
+              )}
+            </div>
+
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center justify-between gap-2 mb-1">
+                <div className="flex items-center gap-2">
+                  <span className={`text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full ${
+                    liveCaption.type === 'ai' 
+                      ? 'bg-primary-500/30 text-primary-300 border border-primary-400/30' 
+                      : 'bg-red-500/30 text-red-300 border border-red-400/30'
+                  }`}>
+                    {liveCaption.type === 'ai' ? '🤖 Live Caption • AI Genie' : '🎙️ Live Voice Input • Speaking'}
+                  </span>
+
+                  {/* Equalizer Sound Waves Animation */}
+                  <div className="flex items-center gap-0.5 h-3">
+                    <span className="w-0.5 bg-emerald-400 rounded-full animate-bounce h-3"></span>
+                    <span className="w-0.5 bg-yellow-400 rounded-full animate-bounce h-2 delay-75"></span>
+                    <span className="w-0.5 bg-emerald-400 rounded-full animate-bounce h-3.5 delay-150"></span>
+                    <span className="w-0.5 bg-yellow-400 rounded-full animate-bounce h-2.5 delay-100"></span>
+                  </div>
+                </div>
+
+                <button
+                  onClick={() => {
+                    setLiveCaption(prev => ({ ...prev, active: false }));
+                    soundEffects.stopSpeaking();
+                  }}
+                  className="text-slate-400 hover:text-white text-xs p-1"
+                  title="Dismiss live caption"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              </div>
+
+              <p className="text-xs sm:text-sm font-medium text-slate-100 leading-relaxed font-sans select-text">
+                "{liveCaption.text}"
+                {liveCaption.isInterim && <span className="inline-block w-1.5 h-4 ml-1 bg-yellow-400 animate-pulse align-middle"></span>}
+              </p>
+            </div>
+          </div>
+        )}
+
+        {/* Voice Error Notification Alert */}
+        {voiceError && (
+          <div className="bg-amber-50 dark:bg-amber-950/70 border-b border-amber-200 dark:border-amber-900/60 p-3 px-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 text-xs text-amber-900 dark:text-amber-200">
+            <div className="flex items-center gap-2 flex-1">
+              <AlertCircle className="w-4 h-4 text-amber-600 dark:text-amber-400 flex-shrink-0" />
+              <span>{voiceError}</span>
+            </div>
+            <div className="flex items-center gap-1.5 self-end sm:self-auto">
+              <button
+                onClick={() => {
+                  setVoiceError(null);
+                  startListening();
+                }}
+                className="px-2.5 py-1 bg-amber-600 hover:bg-amber-700 text-white rounded-lg font-bold text-[11px] transition-all flex items-center gap-1 shadow-xs"
+              >
+                <RotateCcw className="w-3 h-3" />
+                <span>Retry Mic</span>
+              </button>
+              <button
+                onClick={() => setVoiceError(null)}
+                className="p-1 rounded-md text-amber-700 dark:text-amber-300 hover:bg-amber-100 dark:hover:bg-amber-900"
+                title="Dismiss"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          </div>
+        )}
+
 
         {/* Chat History Body */}
         <div className="flex-1 overflow-y-auto p-4 sm:p-5 space-y-4 bg-slate-50/70 dark:bg-slate-950/60">
@@ -429,10 +626,10 @@ export default function AIChatbotModal({ isOpen, onClose }) {
                         />
                         <div>
                           <div className="font-extrabold text-gray-900 dark:text-white flex items-center gap-1.5">
-                            <span>{msg.recipe.icon}</span> {msg.recipe.name}
+                            <span>{msg.recipe.icon || '🍛'}</span> {msg.recipe.name}
                           </div>
                           <div className="text-xs text-amber-800 dark:text-amber-300 font-medium mt-0.5">
-                            ⏱️ {msg.recipe.time} • 👥 {msg.recipe.servings}
+                            ⏱️ {msg.recipe.time} • 👥 {msg.recipe.servings || msg.recipe.serves}
                           </div>
                           <div className="text-xs font-bold text-gray-900 dark:text-white mt-1">
                             Total Recipe Cost: <span className="font-mono text-primary-600 dark:text-primary-400">₹{msg.totalCost}</span>
@@ -469,49 +666,66 @@ export default function AIChatbotModal({ isOpen, onClose }) {
 
                   {/* Products Grid Component */}
                   {msg.type === 'products' && msg.products && (
-                    <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-                      {msg.products.map(prod => {
-                        const inCart = shoppingList.some(item => item.id === prod.id);
-                        return (
-                          <div 
-                            key={prod.id} 
-                            className="bg-gray-50 dark:bg-slate-800 p-3 rounded-xl border border-gray-200 dark:border-slate-700 flex flex-col justify-between gap-2"
+                    <div className="mt-3 space-y-2">
+                      {msg.isLocationSearch && (
+                        <div className="flex items-center justify-between bg-blue-50 dark:bg-blue-950/50 p-2.5 rounded-xl border border-blue-200 dark:border-blue-900 text-xs text-blue-900 dark:text-blue-200 font-bold mb-2">
+                          <span className="flex items-center gap-1.5">
+                            <Navigation className="w-4 h-4 text-blue-600 dark:text-blue-400" />
+                            <span>In-Store Supermarket Aisle Placement</span>
+                          </span>
+                          <button
+                            onClick={() => setMapModalProduct(msg.products[0])}
+                            className="px-2.5 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-[11px] font-bold transition-all flex items-center gap-1"
                           >
-                            <div className="flex items-center gap-2.5">
-                              <img src={prod.image} alt={prod.name} className="w-11 h-11 rounded-lg object-cover bg-white dark:bg-slate-900 border border-gray-100 dark:border-slate-800" />
-                              <div className="min-w-0 flex-1">
-                                <div className="font-bold text-xs text-gray-900 dark:text-white truncate">{prod.name}</div>
-                                <div className="text-[11px] font-bold text-primary-600 dark:text-primary-400 font-mono">₹{prod.price} / {prod.unit}</div>
-                                <div className="text-[10px] text-blue-600 dark:text-blue-400 font-semibold flex items-center gap-0.5">
-                                  <MapPin className="w-3 h-3" /> Aisle {prod.aisle}, Shelf {prod.shelf}
+                            <MapPin className="w-3 h-3" /> 2D Map
+                          </button>
+                        </div>
+                      )}
+
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                        {msg.products.map(prod => {
+                          const inCart = shoppingList.some(item => item.id === prod.id);
+                          return (
+                            <div 
+                              key={prod.id} 
+                              className="bg-gray-50 dark:bg-slate-800 p-3 rounded-xl border border-gray-200 dark:border-slate-700 flex flex-col justify-between gap-2 shadow-2xs hover:border-primary-400 transition-colors"
+                            >
+                              <div className="flex items-center gap-2.5">
+                                <img src={prod.image} alt={prod.name} className="w-11 h-11 rounded-lg object-cover bg-white dark:bg-slate-900 border border-gray-100 dark:border-slate-800 flex-shrink-0" />
+                                <div className="min-w-0 flex-1">
+                                  <div className="font-bold text-xs text-gray-900 dark:text-white truncate">{prod.name}</div>
+                                  <div className="text-[11px] font-bold text-primary-600 dark:text-primary-400 font-mono">₹{prod.price} / {prod.unit}</div>
+                                  <div className="text-[10px] text-blue-600 dark:text-blue-400 font-semibold flex items-center gap-0.5">
+                                    <MapPin className="w-3 h-3" /> Aisle {prod.aisle}, Shelf {prod.shelf}
+                                  </div>
                                 </div>
                               </div>
-                            </div>
 
-                            <div className="flex items-center gap-1.5 pt-1 border-t border-gray-100 dark:border-slate-700">
-                              <button
-                                onClick={() => addToShoppingList(prod, 1)}
-                                className={`flex-1 py-1.5 px-2 rounded-lg text-[11px] font-bold transition-all flex items-center justify-center gap-1 ${
-                                  inCart 
-                                    ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300' 
-                                    : 'bg-primary-600 hover:bg-primary-700 text-white'
-                                }`}
-                              >
-                                {inCart ? <Check className="w-3.5 h-3.5" /> : <Plus className="w-3.5 h-3.5" />}
-                                <span>{inCart ? 'Added' : 'Add to Cart'}</span>
-                              </button>
+                              <div className="flex items-center gap-1.5 pt-1 border-t border-gray-100 dark:border-slate-700">
+                                <button
+                                  onClick={() => addToShoppingList(prod, 1)}
+                                  className={`flex-1 py-1.5 px-2 rounded-lg text-[11px] font-bold transition-all flex items-center justify-center gap-1 ${
+                                    inCart 
+                                      ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300' 
+                                      : 'bg-primary-600 hover:bg-primary-700 text-white'
+                                  }`}
+                                >
+                                  {inCart ? <Check className="w-3.5 h-3.5" /> : <Plus className="w-3.5 h-3.5" />}
+                                  <span>{inCart ? 'Added' : 'Add to Cart'}</span>
+                                </button>
 
-                              <button
-                                onClick={() => setMapModalProduct(prod)}
-                                title="Locate on 2D store map"
-                                className="p-1.5 bg-blue-50 dark:bg-blue-950 text-blue-700 dark:text-blue-300 rounded-lg hover:bg-blue-100 text-[11px] font-bold transition-colors"
-                              >
-                                <Navigation className="w-3.5 h-3.5" />
-                              </button>
+                                <button
+                                  onClick={() => setMapModalProduct(prod)}
+                                  title="Locate on 2D store map"
+                                  className="p-1.5 bg-blue-50 dark:bg-blue-950 text-blue-700 dark:text-blue-300 rounded-lg hover:bg-blue-100 text-[11px] font-bold transition-colors"
+                                >
+                                  <Navigation className="w-3.5 h-3.5" />
+                                </button>
+                              </div>
                             </div>
-                          </div>
-                        );
-                      })}
+                          );
+                        })}
+                      </div>
                     </div>
                   )}
 
@@ -529,13 +743,13 @@ export default function AIChatbotModal({ isOpen, onClose }) {
                       </div>
 
                       <div className="text-xs text-gray-600 dark:text-gray-300">
-                        🛵 ETA: <span className="font-bold text-gray-900 dark:text-white">{msg.order.etaMinutes || 12} mins</span> • Rider: <span className="font-semibold">{msg.order.rider?.name || 'Assigned Partner'}</span>
+                        🛵 ETA: <span className="font-bold text-gray-900 dark:text-white">{msg.order.etaMinutes || 12} mins</span> • Rider: <span className="font-semibold">{msg.order.rider?.name || 'Assigned Delivery Partner'}</span>
                       </div>
 
                       <div className="w-full bg-gray-200 dark:bg-slate-700 h-2 rounded-full overflow-hidden">
                         <div 
                           className="bg-primary-500 h-full rounded-full transition-all duration-500" 
-                          style={{ width: `${msg.order.rider?.progressPercent || 40}%` }}
+                          style={{ width: `${msg.order.rider?.progressPercent || 45}%` }}
                         />
                       </div>
                     </div>
@@ -569,15 +783,88 @@ export default function AIChatbotModal({ isOpen, onClose }) {
               <span className="w-2 h-2 rounded-full bg-primary-500 animate-bounce"></span>
               <span className="w-2 h-2 rounded-full bg-primary-500 animate-bounce delay-100"></span>
               <span className="w-2 h-2 rounded-full bg-primary-500 animate-bounce delay-200"></span>
-              <span>AI is thinking...</span>
+              <span>AI Genie is searching store aisles...</span>
             </div>
           )}
 
           <div ref={messagesEndRef} />
         </div>
 
-        {/* Input Bar & Voice Mic */}
-        <div className="p-3 sm:p-4 bg-white dark:bg-slate-900 border-t border-gray-200 dark:border-slate-800">
+        {/* Voice Assistant Hub & Real-time Audio Level Bar */}
+        {showVoiceHub && (
+          <div className="bg-gradient-to-br from-slate-900 via-primary-950 to-slate-900 border-t border-primary-500/30 p-3 sm:p-4 text-white animate-in slide-in-from-bottom-3 duration-200 z-20 shadow-2xl">
+            <div className="flex items-center justify-between mb-2.5">
+              <div className="flex items-center gap-2">
+                <div className="w-6 h-6 rounded-lg bg-red-500/20 border border-red-400/30 flex items-center justify-center text-red-400">
+                  <Mic className="w-3.5 h-3.5" />
+                </div>
+                <div>
+                  <h4 className="text-xs font-black text-white flex items-center gap-1.5">
+                    <span>Voice Assistant & Quick Prompts</span>
+                    <span className="bg-amber-400 text-slate-950 text-[9px] font-black px-1.5 py-0.2 rounded uppercase">1-Tap Voice</span>
+                  </h4>
+                </div>
+              </div>
+
+              {/* Hardware Mic Sound Level Bar if active */}
+              {audioLevel > 0 && (
+                <div className="flex items-center gap-1.5 bg-slate-800/80 px-2.5 py-1 rounded-full border border-slate-700">
+                  <span className="text-[10px] text-emerald-400 font-mono font-bold">Mic Volume:</span>
+                  <div className="w-16 bg-slate-700 h-1.5 rounded-full overflow-hidden">
+                    <div 
+                      className="bg-emerald-400 h-full rounded-full transition-all duration-75"
+                      style={{ width: `${Math.max(10, audioLevel)}%` }}
+                    />
+                  </div>
+                </div>
+              )}
+
+              <button
+                onClick={() => setShowVoiceHub(false)}
+                className="text-slate-400 hover:text-white p-1"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <p className="text-[11px] text-primary-200/80 mb-2">
+              Tap any spoken command below to speak with AI Genie with full live captions & voice:
+            </p>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
+              {[
+                { icon: '🥛', text: 'Where is Fresh Milk & Dairy?' },
+                { icon: '🍛', text: 'Paneer Butter Masala Recipe' },
+                { icon: '🥦', text: 'Show fresh Organic Vegetables' },
+                { icon: '🛵', text: 'Track status of my active order' },
+                { icon: '🛒', text: 'Add 1kg Basmati Rice to cart' },
+                { icon: '⏰', text: 'Store opening hours and payment modes' }
+              ].map((cmd, i) => (
+                <button
+                  key={i}
+                  onClick={() => handleQuickVoicePrompt(cmd.text)}
+                  className="flex items-center gap-2 p-2 rounded-xl bg-white/10 hover:bg-primary-600/50 hover:border-primary-400 border border-white/10 text-left transition-all text-xs active:scale-98 group"
+                >
+                  <span className="text-base group-hover:scale-120 transition-transform">{cmd.icon}</span>
+                  <span className="font-semibold text-slate-100 flex-1 truncate">{cmd.text}</span>
+                  <ArrowRight className="w-3.5 h-3.5 text-primary-300 opacity-60 group-hover:opacity-100 group-hover:translate-x-0.5 transition-all" />
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Input Bar & Live Voice Mic */}
+        <div className="p-3 sm:p-4 bg-white dark:bg-slate-900 border-t border-gray-200 dark:border-slate-800 relative">
+          
+          {/* Active Listening Indicator Pill */}
+          {isListening && (
+            <div className="absolute -top-7 left-1/2 -translate-x-1/2 bg-red-600 text-white text-[11px] font-bold px-3 py-0.5 rounded-full shadow-lg flex items-center gap-1.5 animate-bounce">
+              <span className="w-2 h-2 rounded-full bg-white animate-ping"></span>
+              <span>Listening to your voice ({currentLangMeta?.name || 'English'})...</span>
+            </div>
+          )}
+
           <form 
             onSubmit={(e) => {
               e.preventDefault();
@@ -589,14 +876,21 @@ export default function AIChatbotModal({ isOpen, onClose }) {
             <button
               type="button"
               onClick={toggleListening}
-              className={`p-3 rounded-2xl transition-all flex items-center justify-center ${
+              className={`p-3 rounded-2xl transition-all flex items-center justify-center relative ${
                 isListening 
-                  ? 'bg-red-500 text-white animate-pulse shadow-lg ring-4 ring-red-300/40' 
-                  : 'bg-gray-100 dark:bg-slate-800 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-slate-700'
+                  ? 'bg-red-500 text-white shadow-lg ring-4 ring-red-400/40 animate-pulse' 
+                  : 'bg-gray-100 dark:bg-slate-800 text-gray-700 dark:text-gray-300 hover:bg-primary-50 dark:hover:bg-slate-700 hover:text-primary-600'
               }`}
-              title={isListening ? "Listening... Click to stop" : "Speak with AI Assistant"}
+              title={isListening ? "Listening... Click to stop" : "Speak to AI (Click to activate voice input or quick voice hub)"}
             >
-              {isListening ? <Mic className="w-5 h-5" /> : <Mic className="w-5 h-5" />}
+              {isListening ? (
+                <div className="relative flex items-center justify-center">
+                  <Mic className="w-5 h-5 text-white" />
+                  <span className="absolute -inset-1 rounded-full border-2 border-white animate-ping opacity-75"></span>
+                </div>
+              ) : (
+                <Mic className="w-5 h-5" />
+              )}
             </button>
 
             {/* Input Text Box */}
@@ -604,8 +898,10 @@ export default function AIChatbotModal({ isOpen, onClose }) {
               type="text"
               value={inputMessage}
               onChange={(e) => setInputMessage(e.target.value)}
-              placeholder={isListening ? t('ai_listening', 'Listening to your voice...') : t('ai_ask_placeholder', 'Ask AI (e.g. "Paneer Butter Masala recipe", "Where is milk?")...')}
-              className="flex-1 h-12 px-4 rounded-2xl bg-gray-50 dark:bg-slate-800 border border-gray-200 dark:border-slate-700 text-sm text-gray-900 dark:text-white placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-primary-500"
+              placeholder={isListening ? t('ai_listening', 'Listening to your voice...') : t('ai_ask_placeholder', 'Ask AI (e.g. "Where is milk?", "Paneer recipe", "Store timings")...')}
+              className={`flex-1 h-12 px-4 rounded-2xl bg-gray-50 dark:bg-slate-800 border text-sm text-gray-900 dark:text-white placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-primary-500 transition-all ${
+                isListening ? 'border-red-400 dark:border-red-500 ring-2 ring-red-300/30' : 'border-gray-200 dark:border-slate-700'
+              }`}
             />
 
             {/* Send Button */}
@@ -634,3 +930,5 @@ export default function AIChatbotModal({ isOpen, onClose }) {
     </div>
   );
 }
+
+

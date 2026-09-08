@@ -6,7 +6,8 @@
   "type": "commonjs",
   "scripts": {
     "start": "node index.js",
-    "dev": "nodemon index.js"
+    "dev": "nodemon index.js",
+    "seed": "node seed.js"
   },
   "dependencies": {
     "express": "^4.19.2",
@@ -14,6 +15,7 @@
     "dotenv": "^16.4.5",
     "jsonwebtoken": "^9.0.2",
     "bcryptjs": "^2.4.3",
+    "mongoose": "^8.4.0",
     "sqlite": "^5.1.1",
     "sqlite3": "^5.1.7"
   },

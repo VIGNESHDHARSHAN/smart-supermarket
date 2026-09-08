@@ -5,6 +5,7 @@ import { useLanguage } from '../../context/LanguageContext';
 import { AvailabilityBadge } from '../../components/ui/Badge';
 import { Input } from '../../components/ui/Input';
 import { Button } from '../../components/ui/Button';
+import { ProductImage } from '../../components/ui/ProductImage';
 import { Search, Filter, MapPin, Plus, Check, ShoppingBag } from 'lucide-react';
 import StoreAisleMapModal from '../../components/customer/StoreAisleMapModal';
 
@@ -160,11 +161,14 @@ export default function ProductSearch() {
                   <div>
                     {/* Image */}
                     <div className="aspect-[4/3] bg-gray-50 dark:bg-slate-800 overflow-hidden relative flex items-center justify-center p-2">
-                      <img 
+                      <ProductImage 
                         src={product.image} 
                         alt={product.name}
+                        category={product.category}
+                        productName={product.name}
+                        barcode={product.barcode}
                         onClick={() => navigate(`/customer/products/${product.id}`)}
-                        className="w-full h-full object-cover rounded-xl group-hover:scale-105 transition-transform duration-300 cursor-pointer" 
+                        className="w-full h-full object-contain rounded-xl group-hover:scale-105 transition-transform duration-300 cursor-pointer" 
                       />
                       <div className="absolute top-3 right-3">
                         <AvailabilityBadge stock={product.stock} reorderLevel={product.reorderLevel} />

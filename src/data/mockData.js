@@ -13,7 +13,7 @@ export const initialProducts = [
     reorderLevel: 20, 
     aisle: 1, 
     shelf: 1, 
-    image: 'https://images.unsplash.com/photo-1586201375761-83865001e31c?w=600&auto=format&fit=crop&q=80', 
+    image: 'https://images.openfoodfacts.org/images/products/069/022/510/1134/front_en.25.400.jpg', 
     status: 'ACTIVE',
     dietary: ['Organic', 'Gluten-Free']
   },
@@ -30,7 +30,7 @@ export const initialProducts = [
     reorderLevel: 15, 
     aisle: 1, 
     shelf: 2, 
-    image: 'https://images.unsplash.com/photo-1509440159596-0249088772ff?w=600&auto=format&fit=crop&q=80', 
+    image: 'https://images.openfoodfacts.org/images/products/890/172/501/6838/front_en.7.400.jpg', 
     status: 'ACTIVE',
     dietary: ['100% Whole Grain', 'High Fiber']
   },
@@ -47,7 +47,7 @@ export const initialProducts = [
     reorderLevel: 50, 
     aisle: 1, 
     shelf: 3, 
-    image: 'https://images.unsplash.com/photo-1626197031507-c170f0997534?w=600&auto=format&fit=crop&q=80', 
+    image: 'https://images.openfoodfacts.org/images/products/890/404/390/1015/front_en.34.400.jpg', 
     status: 'ACTIVE',
     dietary: ['Iodized']
   },
@@ -81,7 +81,7 @@ export const initialProducts = [
     reorderLevel: 40, 
     aisle: 2, 
     shelf: 1, 
-    image: 'https://images.unsplash.com/photo-1612927601601-6638404737ce?w=600&auto=format&fit=crop&q=80', 
+    image: 'https://images.openfoodfacts.org/images/products/890/105/801/7687/front_en.13.400.jpg', 
     status: 'ACTIVE',
     dietary: ['Instant Meal']
   },
@@ -98,7 +98,7 @@ export const initialProducts = [
     reorderLevel: 20, 
     aisle: 1, 
     shelf: 5, 
-    image: 'https://images.unsplash.com/photo-1596040033229-a9821ebd058d?w=600&auto=format&fit=crop&q=80', 
+    image: 'https://images.unsplash.com/photo-1585994192704-58673a5a415a?w=600&auto=format&fit=crop&q=80', 
     status: 'ACTIVE',
     dietary: ['High Protein', 'Organic']
   },
@@ -115,7 +115,7 @@ export const initialProducts = [
     reorderLevel: 25, 
     aisle: 2, 
     shelf: 2, 
-    image: 'https://images.unsplash.com/photo-1596040033229-a9821ebd058d?w=600&auto=format&fit=crop&q=80', 
+    image: 'https://images.unsplash.com/photo-1615485290382-441e4d049cb5?w=600&auto=format&fit=crop&q=80', 
     status: 'ACTIVE',
     dietary: ['Pure Spices', 'No Preservatives']
   },
@@ -168,7 +168,7 @@ export const initialProducts = [
     reorderLevel: 10, 
     aisle: 6, 
     shelf: 3, 
-    image: 'https://images.unsplash.com/photo-1631452180519-c014fe946bc7?w=600&auto=format&fit=crop&q=80', 
+    image: 'https://images.unsplash.com/photo-1628294895950-9805252327bc?w=600&auto=format&fit=crop&q=80', 
     status: 'ACTIVE',
     dietary: ['High Protein', 'Fresh Cottage Cheese']
   },
@@ -185,7 +185,7 @@ export const initialProducts = [
     reorderLevel: 15, 
     aisle: 6, 
     shelf: 4, 
-    image: 'https://images.unsplash.com/photo-1618160702438-9b02ab6515c9?w=600&auto=format&fit=crop&q=80', 
+    image: 'https://images.unsplash.com/photo-1624806992066-5ffcf7ca186b?w=600&auto=format&fit=crop&q=80', 
     status: 'ACTIVE',
     dietary: ['Rich in Protein']
   },
@@ -202,7 +202,7 @@ export const initialProducts = [
     reorderLevel: 15, 
     aisle: 6, 
     shelf: 5, 
-    image: 'https://images.unsplash.com/photo-1528750997573-59b89d56f4f7?w=600&auto=format&fit=crop&q=80', 
+    image: 'https://images.unsplash.com/photo-1584947921538-23f46f4be084?w=600&auto=format&fit=crop&q=80', 
     status: 'ACTIVE',
     dietary: ['For Tea & Coffee']
   },
@@ -499,7 +499,7 @@ export const initialProducts = [
     reorderLevel: 40, 
     aisle: 7, 
     shelf: 1, 
-    image: 'https://images.unsplash.com/photo-1508747703725-719777637510?w=600&auto=format&fit=crop&q=80', 
+    image: 'https://images.unsplash.com/photo-1618512496248-a07fe83aa8cb?w=600&auto=format&fit=crop&q=80', 
     status: 'ACTIVE',
     dietary: ['Farm Fresh', 'Organic']
   },
@@ -609,31 +609,9 @@ export const initialProducts = [
   }
 ];
 
-export const initialSales = [
-  { id: 'INV1001', date: '2026-08-01T10:30:00Z', staff: 'Rahul', total: 650, paymentMode: 'Card', status: 'Completed', items: [{ productId: '1', qty: 1, price: 650 }] },
-  { id: 'INV1002', date: '2026-08-01T11:15:00Z', staff: 'Priya', total: 120, paymentMode: 'UPI', status: 'Completed', items: [{ productId: '16', qty: 1, price: 120 }] },
-  { id: 'INV1003', date: '2026-08-02T12:05:00Z', staff: 'Rahul', total: 250, paymentMode: 'Cash', status: 'Completed', items: [{ productId: '2', qty: 1, price: 250 }] },
-  { id: 'INV1004', date: '2026-08-03T14:45:00Z', staff: 'Amit', total: 27, paymentMode: 'Cash', status: 'Completed', items: [{ productId: '6', qty: 1, price: 27 }] },
-  { id: 'INV1005', date: '2026-08-04T16:20:00Z', staff: 'Priya', total: 240, paymentMode: 'Card', status: 'Completed', items: [{ productId: '16', qty: 2, price: 120 }] },
-  { id: 'INV1006', date: '2026-08-05T09:10:00Z', staff: 'Amit', total: 56, paymentMode: 'UPI', status: 'Completed', items: [{ productId: '7', qty: 1, price: 56 }] },
-  { id: 'INV1007', date: '2026-08-06T13:30:00Z', staff: 'Rahul', total: 60, paymentMode: 'Cash', status: 'Completed', items: [{ productId: '27', qty: 1, price: 60 }] },
-  { id: 'INV1008', date: '2026-08-07T15:50:00Z', staff: 'Priya', total: 195, paymentMode: 'Card', status: 'Completed', items: [{ productId: '25', qty: 1, price: 195 }] },
-  { id: 'INV1009', date: '2026-08-08T18:15:00Z', staff: 'Rahul', total: 110, paymentMode: 'UPI', status: 'Completed', items: [{ productId: '14', qty: 1, price: 110 }] },
-  { id: 'INV1010', date: '2026-08-09T20:00:00Z', staff: 'Amit', total: 130, paymentMode: 'Cash', status: 'Completed', items: [{ productId: '9', qty: 1, price: 130 }] },
-];
+export const initialSales = [];
 
-export const initialTransactions = [
-  { id: 'TXN001', date: '2026-08-01T09:00:00Z', productId: '1', type: 'PURCHASE', quantity: 50, reference: 'PO101', staff: 'Admin' },
-  { id: 'TXN002', date: '2026-08-01T10:30:00Z', productId: '1', type: 'SALE', quantity: -1, reference: 'INV1001', staff: 'Rahul' },
-  { id: 'TXN003', date: '2026-08-01T11:15:00Z', productId: '16', type: 'SALE', quantity: -1, reference: 'INV1002', staff: 'Priya' },
-  { id: 'TXN004', date: '2026-08-02T09:00:00Z', productId: '16', type: 'PURCHASE', quantity: 30, reference: 'PO102', staff: 'Admin' },
-  { id: 'TXN005', date: '2026-08-02T12:05:00Z', productId: '2', type: 'SALE', quantity: -1, reference: 'INV1003', staff: 'Rahul' },
-  { id: 'TXN006', date: '2026-08-03T14:45:00Z', productId: '6', type: 'SALE', quantity: -1, reference: 'INV1004', staff: 'Amit' },
-  { id: 'TXN007', date: '2026-08-04T16:20:00Z', productId: '16', type: 'SALE', quantity: -2, reference: 'INV1005', staff: 'Priya' },
-  { id: 'TXN008', date: '2026-08-05T09:10:00Z', productId: '7', type: 'SALE', quantity: -1, reference: 'INV1006', staff: 'Amit' },
-  { id: 'TXN009', date: '2026-08-06T13:30:00Z', productId: '27', type: 'SALE', quantity: -1, reference: 'INV1007', staff: 'Rahul' },
-  { id: 'TXN010', date: '2026-08-07T08:00:00Z', productId: '9', type: 'PURCHASE', quantity: 20, reference: 'PO103', staff: 'Admin' },
-];
+export const initialTransactions = [];
 
 export const suppliers = [
   { id: 'SUP001', name: 'Fresh Farms Ltd', category: 'Vegetables & Fruits', contact: 'Ramesh', phone: '9876543210' },
@@ -664,12 +642,12 @@ export const popularRecipes = [
     name: 'Fragrant Vegetable Basmati Pulao',
     nameHi: 'स्वादिष्ट वेज बासमती पुलाव',
     nameTa: 'வெஜிடபிள் பிரியாணி புலாவ்',
-    nameTe: 'వెజిటబుల్ బాస్మతి పులావ్',
+    nameTe: 'வெஜிடபுல் బాస్మతి పులావ్',
     nameEs: 'Pulao de Arroz Basmati y Verduras',
     serves: '4 Persons',
     time: '30 Mins',
     icon: '🍚',
-    image: 'https://images.unsplash.com/photo-1586201375761-83865001e31c?w=600&auto=format&fit=crop&q=80',
+    image: 'https://images.unsplash.com/photo-1563379091339-03b21ab4a4f8?w=600&auto=format&fit=crop&q=80',
     description: 'Aromatic long-grain basmati rice tossed with fresh garden vegetables and pure desi ghee.',
     productIds: ['1', '33', '26', '28', '27', '32'],
     tags: ['Gluten-Free', 'Party Special']
@@ -684,9 +662,10 @@ export const popularRecipes = [
     serves: '2 Persons',
     time: '5 Mins',
     icon: '🥤',
-    image: 'https://images.unsplash.com/photo-1611080626919-7cf5a9dbab5b?w=600&auto=format&fit=crop&q=80',
+    image: 'https://images.unsplash.com/photo-1553530666-ba11a7da3888?w=600&auto=format&fit=crop&q=80',
     description: 'Energizing fresh smoothie made with organic spinach, sweet apples, ripe bananas and creamy milk.',
     productIds: ['6', '34', '29', '30'],
     tags: ['Healthy', 'Breakfast', 'High Vitamin']
   }
 ];
+

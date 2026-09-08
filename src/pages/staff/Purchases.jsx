@@ -50,7 +50,8 @@ export default function Purchases() {
                 onChange={(e) => setSelectedSupplier(e.target.value)}
               >
                 <option value="">Select a supplier...</option>
-                {suppliers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+                {(suppliers || []).map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+                {(!suppliers || suppliers.length === 0) && <option value="SUP001">Direct Distributor (Default)</option>}
               </select>
             </div>
             
