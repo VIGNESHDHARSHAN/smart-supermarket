@@ -1,8 +1,9 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useSupermarket } from '../../context/SupermarketContext';
 import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
 import { ProductImage } from '../../components/ui/ProductImage';
+import Pagination from '../../components/ui/Pagination';
 import { fetchProductImageFromInternet } from '../../services/imageService';
 import { 
   Package, 
@@ -52,6 +53,20 @@ export default function Products() {
       (p.brand && p.brand.toLowerCase().includes(searchTerm.toLowerCase()));
     return matchesCategory && matchesSearch;
   });
+
+  // Pagination State
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
+
+  // Reset to page 1 on search or category changes
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchTerm, selectedCategory]);
+
+  const paginatedProducts = filteredProducts.slice(
+    (currentPage - 1) * pageSize,
+    currentPage * pageSize
+  );
 
   const handleAutoFetchImage = async () => {
     if (!formData.name.trim() && !formData.barcode.trim()) {
@@ -172,7 +187,7 @@ export default function Products() {
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100 text-xs font-medium text-gray-800">
-              {filteredProducts.map((product) => (
+              {paginatedProducts.map((product) => (
                 <tr key={product.id} className="hover:bg-purple-50/40 transition-colors">
                   
                   <td className="py-3.5 px-6">
@@ -247,6 +262,16 @@ export default function Products() {
               ))}
             </tbody>
           </table>
+
+          {/* Pagination Controls */}
+          <Pagination
+            currentPage={currentPage}
+            totalItems={filteredProducts.length}
+            pageSize={pageSize}
+            onPageChange={setCurrentPage}
+            pageSizeOptions={[10, 25, 50]}
+            onPageSizeChange={setPageSize}
+          />
         </div>
       </div>
 

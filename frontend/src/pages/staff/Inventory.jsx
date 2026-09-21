@@ -1,10 +1,11 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useSupermarket, DEMO_CUSTOMERS } from '../../context/SupermarketContext';
 import { suppliers } from '../../data/mockData';
 import { AvailabilityBadge } from '../../components/ui/Badge';
 import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
 import { ProductImage } from '../../components/ui/ProductImage';
+import Pagination from '../../components/ui/Pagination';
 import { 
   Search, 
   Plus, 
@@ -59,6 +60,20 @@ export default function Inventory() {
 
     return matchesSearch && matchesCategory && matchesStock;
   });
+
+  // Pagination State
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
+
+  // Reset to page 1 on filter or search changes
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchTerm, filterStockStatus, selectedCategory]);
+
+  const paginatedProducts = filteredProducts.slice(
+    (currentPage - 1) * pageSize,
+    currentPage * pageSize
+  );
 
   const lowStockCount = products.filter(p => p.stock > 0 && p.stock <= p.reorderLevel).length;
   const outOfStockCount = products.filter(p => p.stock === 0).length;
@@ -168,7 +183,7 @@ export default function Inventory() {
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
-              {filteredProducts.map((product) => {
+              {paginatedProducts.map((product) => {
                 const isLow = product.stock > 0 && product.stock <= product.reorderLevel;
                 const isOut = product.stock === 0;
 
@@ -258,6 +273,16 @@ export default function Inventory() {
               })}
             </tbody>
           </table>
+
+          {/* Pagination Controls */}
+          <Pagination
+            currentPage={currentPage}
+            totalItems={filteredProducts.length}
+            pageSize={pageSize}
+            onPageChange={setCurrentPage}
+            pageSizeOptions={[10, 25, 50]}
+            onPageSizeChange={setPageSize}
+          />
         </div>
 
         {filteredProducts.length === 0 && (

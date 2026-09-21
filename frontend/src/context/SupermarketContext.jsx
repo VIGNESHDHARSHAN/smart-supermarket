@@ -148,6 +148,12 @@ export const SupermarketProvider = ({ children }) => {
     return saved ? JSON.parse(saved) : null;
   });
 
+  // Staff Auth State
+  const [currentStaff, setCurrentStaff] = useState(() => {
+    const saved = localStorage.getItem('sm_staff_session');
+    return saved ? JSON.parse(saved) : null;
+  });
+
   // Online Orders (Delivery, Take Away, Scan & Go)
   const [orders, setOrders] = useState(() => {
     const saved = localStorage.getItem('sm_orders');
@@ -283,6 +289,29 @@ export const SupermarketProvider = ({ children }) => {
       setCurrentUser(found);
       soundEffects.playNotificationPing();
     }
+  };
+
+  // Staff Authorization Functions
+  const loginStaff = (staffData = {}) => {
+    const session = {
+      id: staffData.id || 'STAFF_001',
+      name: staffData.name || 'Admin Manager',
+      email: staffData.email || 'admin@smartmart.com',
+      role: staffData.role || 'Supermarket Operator',
+      centerName: storeSettings?.storeName || 'SmartMart Express Supermarket',
+      centerCode: 'BLR-IND-102',
+      loginTime: new Date().toISOString()
+    };
+    setCurrentStaff(session);
+    localStorage.setItem('sm_staff_session', JSON.stringify(session));
+    soundEffects.playSuccessChime();
+    return session;
+  };
+
+  const logoutStaff = () => {
+    setCurrentStaff(null);
+    localStorage.removeItem('sm_staff_session');
+    soundEffects.playNotificationPing();
   };
 
   // Cart & Shopping List Functions
@@ -849,6 +878,10 @@ export const SupermarketProvider = ({ children }) => {
       loginCustomer,
       logoutCustomer,
       switchCustomerProfile,
+      currentStaff,
+      isStaffAuthenticated: !!currentStaff,
+      loginStaff,
+      logoutStaff,
       addToShoppingList,
       updateCartQuantity,
       removeFromShoppingList,

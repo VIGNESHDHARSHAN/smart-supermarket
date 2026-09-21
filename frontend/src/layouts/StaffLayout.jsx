@@ -26,10 +26,17 @@ import { useLanguage } from '../context/LanguageContext';
 export default function StaffLayout() {
   const location = useLocation();
   const navigate = useNavigate();
-  const { orders } = useSupermarket();
+  const { orders, logoutStaff, currentStaff, storeSettings } = useSupermarket();
   const { theme, toggleTheme, isDark } = useTheme();
   const { language, setLanguage, t, supportedLanguages, currentLangMeta } = useLanguage();
   const [langDropdownOpen, setLangDropdownOpen] = useState(false);
+
+  const handleSignOut = () => {
+    if (window.confirm("Confirm sign out from supermarket staff terminal?")) {
+      logoutStaff();
+      navigate('/staff/login', { replace: true });
+    }
+  };
 
   const activeOnlineOrdersCount = orders.filter(o => 
     !['DELIVERED', 'COLLECTED', 'COMPLETED', 'CANCELLED'].includes(o.status)
@@ -69,11 +76,19 @@ export default function StaffLayout() {
       <div className="w-64 bg-charcoal-900 dark:bg-slate-900 text-white flex-shrink-0 flex flex-col justify-between border-r border-charcoal-800 dark:border-slate-800">
         
         <div>
-          {/* Brand Header */}
-          <div className="h-16 flex items-center justify-between px-5 bg-charcoal-950 dark:bg-slate-950 border-b border-charcoal-800 dark:border-slate-800">
-            <Link to="/staff/dashboard" className="flex items-center gap-2">
+          {/* Brand Header with Center Name */}
+          <div className="py-3 px-4 bg-charcoal-950 dark:bg-slate-950 border-b border-charcoal-800 dark:border-slate-800">
+            <Link to="/staff/dashboard" className="flex items-center gap-2.5">
               <div className="bg-white p-1 px-2 rounded-xl shadow-xs border border-gray-100 flex items-center justify-center">
-                <img src="/gosmart-logo.png" alt="GoSmart Admin" className="h-8 w-auto object-contain max-w-[145px]" />
+                <img src="/gosmart-logo.png" alt="GoSmart Admin" className="h-7 w-auto object-contain" />
+              </div>
+              <div className="overflow-hidden">
+                <div className="text-xs font-black text-white leading-tight truncate">
+                  {storeSettings?.storeName || 'SmartMart Express'}
+                </div>
+                <div className="text-[10px] text-emerald-400 font-semibold tracking-wide truncate">
+                  Indiranagar Supercenter
+                </div>
               </div>
             </Link>
           </div>
@@ -134,13 +149,14 @@ export default function StaffLayout() {
             <ArrowLeft className="mr-2.5 h-4 w-4 text-primary-400" />
             Switch to Customer Portal
           </Link>
-          <Link
-            to="/staff/login"
-            className="flex items-center w-full px-3 py-2 text-xs font-semibold text-red-400 rounded-xl hover:bg-red-950/40 hover:text-red-300 transition-colors"
+          <button
+            type="button"
+            onClick={handleSignOut}
+            className="flex items-center w-full px-3 py-2 text-xs font-semibold text-red-400 rounded-xl hover:bg-red-950/40 hover:text-red-300 transition-colors text-left"
           >
             <LogOut className="mr-2.5 h-4 w-4 text-red-400" />
             Sign Out Staff
-          </Link>
+          </button>
         </div>
 
       </div>
@@ -152,9 +168,9 @@ export default function StaffLayout() {
         <header className="bg-white dark:bg-slate-900 shadow-xs border-b border-gray-200 dark:border-slate-800 h-16 flex items-center px-8 justify-between transition-colors">
           
           <div className="flex items-center gap-3">
-            <span className="text-xs font-bold bg-green-100 dark:bg-emerald-950/70 text-green-800 dark:text-emerald-300 border dark:border-emerald-800/60 px-2.5 py-1 rounded-full flex items-center gap-1.5">
-              <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse"></span>
-              Store System Online (Indiranagar Supercenter)
+            <span className="text-xs font-bold bg-emerald-100 dark:bg-emerald-950/70 text-emerald-900 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-800 px-3 py-1 rounded-full flex items-center gap-2 shadow-2xs">
+              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+              <span><strong>{storeSettings?.storeName || 'SmartMart'}</strong> — Indiranagar Supercenter (Terminal #01)</span>
             </span>
           </div>
 
@@ -226,12 +242,16 @@ export default function StaffLayout() {
 
             {/* Admin Avatar */}
             <div className="flex items-center gap-3">
-              <div className="w-8 h-8 rounded-full bg-primary-100 dark:bg-primary-900 border border-primary-300 dark:border-primary-700 flex items-center justify-center text-primary-700 dark:text-primary-300 font-bold text-xs">
-                AD
+              <div className="w-8 h-8 rounded-full bg-primary-600 text-white font-black flex items-center justify-center text-xs shadow-xs">
+                {(currentStaff?.name || 'AD').substring(0, 2).toUpperCase()}
               </div>
               <div>
-                <div className="text-xs font-bold text-gray-900 dark:text-white leading-tight">Admin Manager</div>
-                <div className="text-[10px] text-gray-500 dark:text-gray-400">Supermarket Operator</div>
+                <div className="text-xs font-bold text-gray-900 dark:text-white leading-tight">
+                  {currentStaff?.name || 'Admin Manager'}
+                </div>
+                <div className="text-[10px] text-gray-500 dark:text-gray-400">
+                  {currentStaff?.role || 'Supermarket Operator'}
+                </div>
               </div>
             </div>
 

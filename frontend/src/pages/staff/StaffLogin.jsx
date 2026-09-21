@@ -1,17 +1,33 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
-import { Store, ArrowLeft, ShieldCheck, Lock } from 'lucide-react';
+import { useNavigate, useLocation, Link } from 'react-router-dom';
+import { Store, ArrowLeft, ShieldCheck, Lock, CheckCircle2, AlertCircle } from 'lucide-react';
 import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
 import { getGoogleClientId, saveGoogleClientId, redirectToGoogleOAuth, parseGoogleOAuthHash } from '../../lib/payment';
 import { apiGoogleLogin } from '../../services/api';
+import { useSupermarket } from '../../context/SupermarketContext';
 
 export default function StaffLogin() {
   const navigate = useNavigate();
+  const location = useLocation();
+  const { loginStaff, isStaffAuthenticated, storeSettings } = useSupermarket();
+
+  const from = location.state?.from || '/staff/dashboard';
+
   const [loading, setLoading] = useState(false);
   const [googleLoading, setGoogleLoading] = useState(false);
   const [showClientIdPrompt, setShowClientIdPrompt] = useState(false);
   const [clientIdInput, setClientIdInput] = useState(getGoogleClientId() || '');
+  const [email, setEmail] = useState('admin@smartmart.com');
+  const [password, setPassword] = useState('superadmin123');
+  const [authError, setAuthError] = useState('');
+
+  // If already authenticated, redirect safely without adding redundant history
+  useEffect(() => {
+    if (isStaffAuthenticated) {
+      navigate('/staff/dashboard', { replace: true });
+    }
+  }, [isStaffAuthenticated, navigate]);
 
   // Handle return redirect from accounts.google.com
   useEffect(() => {
@@ -21,18 +37,37 @@ export default function StaffLogin() {
         try {
           await apiGoogleLogin(googleUser, true);
         } catch (e) {}
-        navigate('/staff/dashboard');
+        loginStaff({
+          name: googleUser.name || 'Google Staff Employee',
+          email: googleUser.email || 'staff@smartmart.com',
+          role: 'Store Staff'
+        });
+        navigate(from, { replace: true });
       }
     };
     handleGoogleRedirect();
-  }, [navigate]);
+  }, [navigate, from, loginStaff]);
 
   const handleLogin = (e) => {
     e.preventDefault();
+    setAuthError('');
+
+    if (!email.trim() || !password.trim()) {
+      setAuthError('Please enter both staff ID and security password.');
+      return;
+    }
+
     setLoading(true);
     setTimeout(() => {
-      navigate('/staff/dashboard');
-    }, 500);
+      loginStaff({
+        email,
+        name: email.split('@')[0].toUpperCase(),
+        role: 'Supermarket Operator'
+      });
+      setLoading(false);
+      // Navigate cleanly with replace: true to prevent improper backing pages
+      navigate(from, { replace: true });
+    }, 400);
   };
 
   const handleGoogleStaffLogin = () => {
@@ -74,21 +109,41 @@ export default function StaffLogin() {
 
       <div className="sm:mx-auto sm:w-full sm:max-w-md text-center">
         <div className="flex justify-center">
-          <div className="bg-white p-3 rounded-2xl shadow-xl border border-gray-100 flex items-center justify-center">
+          <div className="bg-white p-3.5 rounded-2xl shadow-xl border border-gray-100 flex items-center justify-center">
             <img src="/gosmart-logo.png" alt="GoSmart Supermarket" className="h-16 w-auto object-contain" />
           </div>
         </div>
-        <h2 className="mt-5 text-center text-3xl font-extrabold text-white tracking-tight">
-          GoSmart Staff Operating System
+
+        {/* Supermarket Center Name Banner */}
+        <div className="mt-4 flex flex-col items-center justify-center gap-1">
+          <div className="inline-flex items-center gap-2 px-3 py-1 bg-charcoal-800 border border-charcoal-700 rounded-full text-xs font-bold text-primary-400">
+            <Store className="w-3.5 h-3.5" />
+            <span>{storeSettings?.storeName || 'SmartMart Express Supermarket'}</span>
+          </div>
+          <div className="text-xs font-semibold text-emerald-400 tracking-wide uppercase flex items-center gap-1.5 mt-0.5">
+            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+            Indiranagar Supercenter • Terminal #01
+          </div>
+        </div>
+
+        <h2 className="mt-3 text-center text-2xl sm:text-3xl font-black text-white tracking-tight">
+          Staff Portal Authorization
         </h2>
-        <p className="mt-2 text-center text-sm text-gray-400">
-          POS Billing, Inventory Control & Online Order Dispatching
+        <p className="mt-1 text-center text-xs sm:text-sm text-gray-400">
+          POS Billing, Inventory Control & Turnstile Security System
         </p>
       </div>
 
-      <div className="mt-8 sm:mx-auto sm:w-full sm:max-w-md">
-        <div className="bg-white py-8 px-6 shadow-2xl rounded-2xl sm:px-10 space-y-6">
+      <div className="mt-7 sm:mx-auto sm:w-full sm:max-w-md">
+        <div className="bg-white py-8 px-6 shadow-2xl rounded-3xl sm:px-10 space-y-6 border border-gray-100">
           
+          {authError && (
+            <div className="p-3 bg-red-50 border border-red-200 rounded-xl flex items-center gap-2 text-xs text-red-700 font-semibold">
+              <AlertCircle className="w-4 h-4 text-red-600 flex-shrink-0" />
+              <span>{authError}</span>
+            </div>
+          )}
+
           {/* Google Workspace Staff SSO */}
           <div>
             <button
@@ -143,41 +198,45 @@ export default function StaffLogin() {
             <span className="bg-white px-3 text-xs font-semibold text-gray-400 uppercase tracking-wider">or Staff Credentials</span>
           </div>
 
-          <form className="space-y-5" onSubmit={handleLogin}>
+          <form className="space-y-4" onSubmit={handleLogin}>
             <div>
-              <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-1">
-                Staff ID / Email
+              <label htmlFor="email" className="block text-xs font-bold uppercase tracking-wider text-gray-700 mb-1">
+                Staff ID / Corporate Email
               </label>
               <Input 
                 id="email" 
                 name="email" 
                 type="text" 
                 required 
-                defaultValue="admin@smartmart.com" 
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="admin@smartmart.com"
               />
             </div>
 
             <div>
-              <label htmlFor="password" className="block text-sm font-medium text-gray-700 mb-1">
-                Security Password
+              <label htmlFor="password" className="block text-xs font-bold uppercase tracking-wider text-gray-700 mb-1">
+                Security Password / PIN
               </label>
               <Input 
                 id="password" 
                 name="password" 
                 type="password" 
                 required 
-                defaultValue="superadmin123" 
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="••••••••"
               />
             </div>
 
             <div>
-              <Button type="submit" className="w-full h-12 text-base font-bold bg-charcoal-900 hover:bg-black" disabled={loading}>
+              <Button type="submit" className="w-full h-12 text-base font-extrabold bg-charcoal-900 hover:bg-black shadow-lg" disabled={loading}>
                 {loading ? 'Authenticating Staff...' : 'Sign in to Staff Portal'}
               </Button>
             </div>
             
-            <div className="p-3 bg-gray-50 rounded-xl text-xs text-center text-gray-500 border border-gray-100">
-              Demo credentials pre-filled. Click sign in to open dashboard.
+            <div className="p-2.5 bg-gray-50 rounded-xl text-[11px] text-center text-gray-500 border border-gray-100">
+              Demo credentials pre-filled. Click sign in to open authorized center dashboard.
             </div>
           </form>
         </div>

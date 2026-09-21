@@ -16,6 +16,7 @@ import CustomerSettings from './pages/customer/CustomerSettings';
 
 // Staff Pages
 import StaffLayout from './layouts/StaffLayout';
+import StaffProtectedRoute from './components/staff/StaffProtectedRoute';
 import StaffLogin from './pages/staff/StaffLogin';
 import Dashboard from './pages/staff/Dashboard';
 import POSBilling from './pages/staff/POSBilling';
@@ -50,17 +51,19 @@ function App() {
 
               {/* Staff Routes */}
               <Route path="/staff/login" element={<StaffLogin />} />
-              <Route path="/staff" element={<StaffLayout />}>
-                <Route index element={<Navigate to="/staff/dashboard" replace />} />
-                <Route path="dashboard" element={<Dashboard />} />
-                <Route path="verify" element={<StaffVerification />} />
-                <Route path="orders" element={<StaffOrders />} />
-                <Route path="pos" element={<POSBilling />} />
-                <Route path="inventory" element={<Inventory />} />
-                <Route path="purchases" element={<Purchases />} />
-                <Route path="sales" element={<SalesHistory />} />
-                <Route path="products" element={<Products />} />
-                <Route path="settings" element={<StaffSettings />} />
+              <Route element={<StaffProtectedRoute />}>
+                <Route path="/staff" element={<StaffLayout />}>
+                  <Route index element={<Navigate to="/staff/dashboard" replace />} />
+                  <Route path="dashboard" element={<Dashboard />} />
+                  <Route path="verify" element={<StaffVerification />} />
+                  <Route path="orders" element={<StaffOrders />} />
+                  <Route path="pos" element={<POSBilling />} />
+                  <Route path="inventory" element={<Inventory />} />
+                  <Route path="purchases" element={<Purchases />} />
+                  <Route path="sales" element={<SalesHistory />} />
+                  <Route path="products" element={<Products />} />
+                  <Route path="settings" element={<StaffSettings />} />
+                </Route>
               </Route>
             </Routes>
           </BrowserRouter>
