@@ -42,7 +42,9 @@ export default function ShoppingList() {
     products, 
     currentUser, 
     placeCustomerOrder,
-    storeSettings
+    storeSettings,
+    isStoreOpen,
+    storeStatus
   } = useSupermarket();
 
   // Fulfillment State
@@ -128,6 +130,11 @@ export default function ShoppingList() {
 
   const handleCheckout = () => {
     if (currentList.length === 0) return;
+
+    if (!isStoreOpen) {
+      alert(`🌙 Store is currently closed for purchases.\n\nSmartMart operating hours are ${storeStatus?.formattedHours || '7:00 AM – 11:00 PM'}. (${storeStatus?.nextOpenMessage || 'Opens at 7:00 AM'}).\n\nCheckout will unlock during store hours.`);
+      return;
+    }
 
     if (!currentUser || currentUser.id === 'cust_guest') {
       alert("🔐 Sign in required! Please sign in or create an account to complete your purchase.");
@@ -623,18 +630,39 @@ export default function ShoppingList() {
                 )}
               </div>
 
+              {/* Store Closed Warning Card */}
+              {!isStoreOpen && (
+                <div className="p-3.5 bg-amber-50 dark:bg-amber-950/50 border border-amber-300 dark:border-amber-800 rounded-2xl text-xs text-amber-950 dark:text-amber-200 space-y-1.5 shadow-xs animate-in fade-in">
+                  <div className="font-bold flex items-center gap-2 text-amber-800 dark:text-amber-300 text-sm">
+                    <span>🌙</span> Store Operating Hours Restriction
+                  </div>
+                  <p className="leading-relaxed">
+                    Purchases are only permitted during store operating hours: <strong>{storeStatus?.formattedHours || '7:00 AM – 11:00 PM'}</strong> ({storeStatus?.nextOpenMessage || 'Opens at 7:00 AM'}).
+                  </p>
+                  <p className="text-[11px] text-amber-800/80 dark:text-amber-400 font-medium">
+                    ✨ Your items remain safely in your cart. Checkout will automatically unlock when the supermarket opens.
+                  </p>
+                </div>
+              )}
+
               {/* Submit Button */}
               <Button
-                className="w-full h-14 text-base font-extrabold flex items-center justify-between px-6 shadow-lg shadow-primary-600/20"
+                className={`w-full h-14 text-base font-extrabold flex items-center justify-between px-6 shadow-lg ${
+                  !isStoreOpen 
+                    ? 'opacity-60 cursor-not-allowed bg-gray-400 dark:bg-slate-700 text-white shadow-none' 
+                    : 'shadow-primary-600/20'
+                }`}
                 onClick={handleCheckout}
-                disabled={isPlacingOrder}
+                disabled={isPlacingOrder || !isStoreOpen}
               >
                 <span>
                   {isPlacingOrder ? 'Processing...' : (
-                    paymentMode === 'UPI' && isMobile 
-                      ? '🚀 Open GPay & Pay Order'
-                      : (fulfillmentType === 'DELIVERY' ? 'Place Delivery Order' :
-                         fulfillmentType === 'TAKEAWAY' ? 'Book Store Take Away' : 'Generate Exit Pass')
+                    !isStoreOpen
+                      ? `🌙 Store Closed (${storeStatus?.nextOpenMessage || 'Opens 7:00 AM'})`
+                      : (paymentMode === 'UPI' && isMobile 
+                          ? '🚀 Open GPay & Pay Order'
+                          : (fulfillmentType === 'DELIVERY' ? 'Place Delivery Order' :
+                             fulfillmentType === 'TAKEAWAY' ? 'Book Store Take Away' : 'Generate Exit Pass'))
                   )}
                 </span>
                 <span className="flex items-center gap-1 font-mono">

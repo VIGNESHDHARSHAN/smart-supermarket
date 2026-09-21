@@ -51,7 +51,9 @@ export default function CustomerScanGo() {
     validateCoupon, 
     triggerGateUnlock, 
     gateStatus,
-    currentUser
+    currentUser,
+    isStoreOpen,
+    storeStatus
   } = useSupermarket();
   
   // Basket State
@@ -493,6 +495,12 @@ export default function CustomerScanGo() {
 
   // Open Self-Checkout Modal
   const handleOpenCheckout = () => {
+    if (!isStoreOpen) {
+      if (soundEnabled) soundEffects.playErrorBuzzer();
+      alert(`🌙 Store is currently closed for shopping & self-checkout.\n\nSmartMart operating hours are ${storeStatus?.formattedHours || '7:00 AM – 11:00 PM'} (${storeStatus?.nextOpenMessage || 'Opens at 7:00 AM'}).\n\nSelf-checkout and exit turnstile gate pass generation are locked while the store is closed.`);
+      return;
+    }
+
     if (scannedCart.length === 0) return;
     if (!currentUser || currentUser.id === 'cust_guest') {
       alert("🔐 Sign in required! Please sign in or create an account to complete your self-checkout.");
@@ -505,6 +513,12 @@ export default function CustomerScanGo() {
 
   // Complete Payment & Generate Gate Pass
   const handleConfirmPayment = () => {
+    if (!isStoreOpen) {
+      if (soundEnabled) soundEffects.playErrorBuzzer();
+      alert(`🌙 Store is currently closed for purchases.\n\nOperating hours: ${storeStatus?.formattedHours || '7:00 AM – 11:00 PM'}.`);
+      return;
+    }
+
     if (selectedPayment === 'RAZORPAY') {
       openRazorpayCheckout({
         amount: grandTotal,
@@ -1235,15 +1249,37 @@ export default function CustomerScanGo() {
               </div>
             </div>
 
+            {/* Store Closed Warning Notice in Cart */}
+            {!isStoreOpen && (
+              <div className="p-3.5 bg-amber-50 rounded-2xl border border-amber-300 text-xs text-amber-950 space-y-1">
+                <div className="font-bold flex items-center gap-1.5 text-amber-800 text-sm">
+                  <span>🌙</span> Store Operating Hours Restriction
+                </div>
+                <p className="leading-snug">
+                  Self-checkout is active only during store hours: <strong>{storeStatus?.formattedHours || '7:00 AM – 11:00 PM'}</strong> ({storeStatus?.nextOpenMessage || 'Opens at 7:00 AM'}).
+                </p>
+                <p className="text-[11px] text-amber-800 font-medium">
+                  Exit turnstile pass generation unlocks when store opens.
+                </p>
+              </div>
+            )}
+
             {/* Instant Checkout & Gate Pass Trigger */}
             <Button
               type="button"
-              className="w-full h-14 text-sm font-extrabold flex items-center justify-between px-6 bg-gradient-to-r from-purple-700 to-indigo-700 hover:from-purple-800 hover:to-indigo-800 shadow-lg shadow-purple-700/25 rounded-2xl transition-all"
+              className={`w-full h-14 text-sm font-extrabold flex items-center justify-between px-6 rounded-2xl transition-all ${
+                !isStoreOpen
+                  ? 'bg-gray-400 opacity-60 cursor-not-allowed shadow-none text-white'
+                  : 'bg-gradient-to-r from-purple-700 to-indigo-700 hover:from-purple-800 hover:to-indigo-800 shadow-lg shadow-purple-700/25'
+              }`}
               onClick={handleOpenCheckout}
-              disabled={scannedCart.length === 0}
+              disabled={scannedCart.length === 0 || !isStoreOpen}
             >
               <span className="flex items-center gap-2">
-                <QrCode className="w-5 h-5" /> Pay & Generate Exit Pass
+                <QrCode className="w-5 h-5" /> 
+                {!isStoreOpen 
+                  ? `🌙 Store Closed (${storeStatus?.nextOpenMessage || 'Opens 7:00 AM'})` 
+                  : 'Pay & Generate Exit Pass'}
               </span>
               <span className="flex items-center gap-1 font-mono text-base">
                 ₹{grandTotal.toFixed(2)} <ArrowRight className="w-5 h-5 ml-1" />

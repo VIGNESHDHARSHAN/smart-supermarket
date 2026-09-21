@@ -20,7 +20,26 @@ router.post('/', async (req, res) => {
       selfCheckoutDetails,
       customerName = 'Ananya Iyer',
       customerId = 'cust_1',
+      bypassStoreHours = false
     } = req.body;
+
+    // Verify operating hours (default: 07:00 to 23:00)
+    const enforceHours = process.env.ENFORCE_STORE_HOURS !== 'false';
+    if (enforceHours && !bypassStoreHours) {
+      const openHour = parseInt(process.env.STORE_OPEN_HOUR || '7', 10);
+      const closeHour = parseInt(process.env.STORE_CLOSE_HOUR || '23', 10);
+      const now = new Date();
+      const currentHour = now.getHours();
+
+      if (openHour < closeHour) {
+        if (currentHour < openHour || currentHour >= closeHour) {
+          return res.status(403).json({
+            error: 'STORE_CLOSED',
+            message: `Supermarket is closed for purchases. Operating hours are ${openHour}:00 to ${closeHour}:00.`
+          });
+        }
+      }
+    }
 
     const orderId = 'ORD-' + Math.floor(10000 + Math.random() * 90000);
     const exitPassCode = 'PASS-' + orderId;

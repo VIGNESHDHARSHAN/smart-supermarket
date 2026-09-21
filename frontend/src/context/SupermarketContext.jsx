@@ -3,6 +3,7 @@ import { initialProducts, initialSales, initialTransactions, popularRecipes } fr
 import { soundEffects } from '../lib/audio';
 import { apiFetchProducts, apiCreateOrder, apiAddProduct, apiUpdateProductStock } from '../services/api';
 import { getCategoryFallbackImage, getCuratedProductImage } from '../services/imageService';
+import { checkStoreOpenStatus } from '../lib/storeHours';
 
 const SupermarketContext = createContext();
 
@@ -12,6 +13,10 @@ export const DEFAULT_STORE_SETTINGS = {
   storeName: 'SmartMart Express Supermarket',
   storeAddress: '100ft Road, Indiranagar, Bengaluru - 560038',
   storePhone: '+91 80 4912 3456',
+  openingTime: '07:00', // 7:00 AM
+  closingTime: '23:00', // 11:00 PM
+  enforceStoreHours: true, // Customer purchases restricted to store operating hours
+  storeStatusOverride: 'AUTO', // 'AUTO' (system clock), 'FORCE_OPEN' (demo), 'FORCE_CLOSED' (demo)
   taxRate: 5, // %
   freeDeliveryThreshold: 299, // INR
   expressDeliveryFee: 25,
@@ -44,11 +49,23 @@ const INITIAL_ORDERS = [];
 const SM_CATALOG_VERSION = 'v4_authentic_proper_images';
 
 export const SupermarketProvider = ({ children }) => {
-  // Store Settings (Tax, delivery rules, hardware timeouts)
+  // Store Settings (Tax, delivery rules, hardware timeouts, store operating hours)
   const [storeSettings, setStoreSettings] = useState(() => {
     const saved = localStorage.getItem('sm_store_settings');
     return saved ? { ...DEFAULT_STORE_SETTINGS, ...JSON.parse(saved) } : DEFAULT_STORE_SETTINGS;
   });
+
+  // Real-time Store Open/Closed Status for customer purchases
+  const [storeStatus, setStoreStatus] = useState(() => checkStoreOpenStatus(storeSettings));
+
+  useEffect(() => {
+    const refreshStatus = () => {
+      setStoreStatus(checkStoreOpenStatus(storeSettings));
+    };
+    refreshStatus();
+    const timer = setInterval(refreshStatus, 30000); // Check every 30s
+    return () => clearInterval(timer);
+  }, [storeSettings]);
 
   // Products (hydrated from REST API or store product catalog with version migration)
   const [products, setProducts] = useState(() => {
@@ -312,6 +329,14 @@ export const SupermarketProvider = ({ children }) => {
     grandTotal = 0,
     subtotal = 0
   }) => {
+    // Check if store is open for customer purchases
+    const currentStatus = checkStoreOpenStatus(storeSettings);
+    if (!currentStatus.isOpen) {
+      soundEffects.playErrorBuzzer();
+      alert(`⛔ Store is Currently Closed: ${currentStatus.message}\n\nPurchases are only accepted between ${currentStatus.formattedHours}.`);
+      return null;
+    }
+
     const orderId = 'ORD-' + Math.floor(10000 + Math.random() * 90000);
     const date = new Date().toISOString();
 
@@ -816,6 +841,8 @@ export const SupermarketProvider = ({ children }) => {
       parkedCarts,
       PROMO_COUPONS,
       storeSettings,
+      storeStatus,
+      isStoreOpen: storeStatus.isOpen,
       popularRecipes,
       isSimulating,
       setIsSimulating,

@@ -31,7 +31,7 @@ import AIChatbotModal from '../components/customer/AIChatbotModal';
 export default function CustomerLayout() {
   const location = useLocation();
   const navigate = useNavigate();
-  const { shoppingList, orders, currentUser } = useSupermarket();
+  const { shoppingList, orders, currentUser, storeStatus, isStoreOpen } = useSupermarket();
   const { theme, toggleTheme, isDark } = useTheme();
   const { language, setLanguage, t, supportedLanguages, currentLangMeta } = useLanguage();
 
@@ -74,7 +74,7 @@ export default function CustomerLayout() {
       {/* Top Real-Time Announcement Bar */}
       <div className="bg-charcoal-900 text-white text-xs py-2 px-4 border-b border-charcoal-800">
         <div className="max-w-7xl mx-auto flex flex-wrap items-center justify-between gap-2">
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2.5 sm:gap-3 flex-wrap">
             <span className="flex items-center gap-1 bg-primary-600/90 text-white text-[11px] font-bold px-2 py-0.5 rounded-full">
               <span className="w-2 h-2 rounded-full bg-white animate-ping"></span>
               LIVE
@@ -82,6 +82,19 @@ export default function CustomerLayout() {
             <span className="text-gray-200">
               🛵 <strong>{t('express_delivery', 'Express 15-Min Delivery')}</strong> & 🛍️ <strong>{t('store_takeaway', 'Store Take Away')}</strong> active in Bengaluru
             </span>
+
+            {/* Store Hours Status Pill */}
+            {isStoreOpen ? (
+              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
+                Store Open ({storeStatus?.formattedHours || '7:00 AM – 11:00 PM'})
+              </span>
+            ) : (
+              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/25 text-amber-300 border border-amber-500/40 animate-pulse">
+                <span className="w-1.5 h-1.5 rounded-full bg-amber-400"></span>
+                Store Closed ({storeStatus?.nextOpenMessage || 'Opens 7:00 AM'})
+              </span>
+            )}
           </div>
 
           <div className="flex items-center gap-4 text-gray-300">
@@ -359,6 +372,28 @@ export default function CustomerLayout() {
           })}
         </div>
       </header>
+
+      {/* Store Closed Banner */}
+      {!isStoreOpen && (
+        <div className="bg-gradient-to-r from-amber-500 via-amber-600 to-amber-500 text-slate-950 px-4 py-3 shadow-md border-b border-amber-700">
+          <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-3 text-xs sm:text-sm font-semibold">
+            <div className="flex items-center gap-2.5">
+              <span className="text-xl">🌙</span>
+              <div>
+                <span className="font-extrabold tracking-wide uppercase text-[11px] bg-slate-900 text-amber-300 px-2 py-0.5 rounded-full mr-2">
+                  Purchases Paused
+                </span>
+                <span>
+                  Our supermarket is currently closed. Operating hours are <strong>{storeStatus?.formattedHours || '7:00 AM – 11:00 PM'}</strong> ({storeStatus?.nextOpenMessage || 'Opens at 7:00 AM'}).
+                </span>
+              </div>
+            </div>
+            <div className="text-slate-950/80 text-xs font-medium bg-amber-400/80 px-3 py-1 rounded-lg border border-amber-500">
+              🛒 You can still browse products & prepare your cart! Checkout unlocks when store opens.
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Main Content */}
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 flex-1 w-full text-slate-900 dark:text-slate-100">

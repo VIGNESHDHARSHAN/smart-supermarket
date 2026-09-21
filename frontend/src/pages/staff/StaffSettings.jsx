@@ -14,12 +14,14 @@ import {
   Activity, 
   ArrowLeft,
   Lock,
-  Layers
+  Layers,
+  Clock
 } from 'lucide-react';
 import { useSupermarket } from '../../context/SupermarketContext';
 import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
 import { soundEffects } from '../../lib/audio';
+import { checkStoreOpenStatus, formatTime12H } from '../../lib/storeHours';
 
 export default function StaffSettings() {
   const navigate = useNavigate();
@@ -47,12 +49,29 @@ export default function StaffSettings() {
   // Security Gate Hardware
   const [gateTimeout, setGateTimeout] = useState(storeSettings?.gateTimeoutSeconds || 7);
 
+  // Store Operating Hours State
+  const [openingTime, setOpeningTime] = useState(storeSettings?.openingTime || '07:00');
+  const [closingTime, setClosingTime] = useState(storeSettings?.closingTime || '23:00');
+  const [enforceStoreHours, setEnforceStoreHours] = useState(storeSettings?.enforceStoreHours !== false);
+  const [storeStatusOverride, setStoreStatusOverride] = useState(storeSettings?.storeStatusOverride || 'AUTO');
+
+  const previewStatus = checkStoreOpenStatus({
+    openingTime,
+    closingTime,
+    enforceStoreHours,
+    storeStatusOverride
+  });
+
   const handleSaveStoreConfig = (e) => {
     e.preventDefault();
     updateStoreSettings({
       storeName,
       storeAddress,
       storePhone,
+      openingTime,
+      closingTime,
+      enforceStoreHours,
+      storeStatusOverride,
       taxRate: Number(taxRate),
       freeDeliveryThreshold: Number(freeThreshold),
       expressDeliveryFee: Number(expressFee),
@@ -146,6 +165,145 @@ export default function StaffSettings() {
                 onChange={(e) => setStoreAddress(e.target.value)}
                 required
               />
+            </div>
+          </div>
+        </div>
+
+        {/* Card: Store Operating Hours & Customer Buying Window */}
+        <div className="bg-white dark:bg-slate-900 p-6 sm:p-7 rounded-3xl border border-gray-200 dark:border-slate-800 shadow-xs space-y-6">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-gray-100 dark:border-slate-800">
+            <div className="flex items-center gap-2.5">
+              <Clock className="w-5 h-5 text-primary-600 dark:text-primary-400" />
+              <div>
+                <h2 className="font-extrabold text-base text-gray-900 dark:text-white">Store Operating Hours & Purchasing Window</h2>
+                <p className="text-xs text-gray-500 dark:text-gray-400">Controls when customers can place orders and checkout.</p>
+              </div>
+            </div>
+
+            {/* Live Status Pill */}
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-bold text-gray-500 dark:text-gray-400">Current Status:</span>
+              {previewStatus.isOpen ? (
+                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-extrabold bg-emerald-100 text-emerald-800 dark:bg-emerald-950/80 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-800">
+                  <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+                  🟢 STORE OPEN ({previewStatus.formattedHours})
+                </span>
+              ) : (
+                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-extrabold bg-rose-100 text-rose-800 dark:bg-rose-950/80 dark:text-rose-300 border border-rose-300 dark:border-rose-800">
+                  <span className="w-2 h-2 rounded-full bg-rose-500 animate-pulse"></span>
+                  🔴 STORE CLOSED ({previewStatus.nextOpenMessage || 'Opens 7:00 AM'})
+                </span>
+              )}
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+            <div>
+              <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-1.5 uppercase tracking-wider">
+                Store Opening Time (Daily)
+              </label>
+              <Input
+                type="time"
+                value={openingTime}
+                onChange={(e) => setOpeningTime(e.target.value)}
+                required
+                className="font-mono text-base"
+              />
+              <span className="text-[11px] text-gray-500 mt-1 block">
+                Standard: 07:00 AM. Checkout unlocks at this time.
+              </span>
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-1.5 uppercase tracking-wider">
+                Store Closing Time (Daily)
+              </label>
+              <Input
+                type="time"
+                value={closingTime}
+                onChange={(e) => setClosingTime(e.target.value)}
+                required
+                className="font-mono text-base"
+              />
+              <span className="text-[11px] text-gray-500 mt-1 block">
+                Standard: 11:00 PM (23:00). Checkout locks at this time.
+              </span>
+            </div>
+          </div>
+
+          {/* Enforce Toggle */}
+          <div className="flex items-center justify-between p-4 bg-gray-50 dark:bg-slate-800/60 rounded-2xl border border-gray-200 dark:border-slate-800">
+            <div>
+              <div className="text-sm font-bold text-gray-900 dark:text-white">
+                Enforce Operating Hours for Customer Purchases
+              </div>
+              <div className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                When enabled, customers can only checkout & buy between {formatTime12H(openingTime)} and {formatTime12H(closingTime)}. Outside these hours, carts are saved and checkout is disabled.
+              </div>
+            </div>
+            <label className="relative inline-flex items-center cursor-pointer ml-4">
+              <input 
+                type="checkbox" 
+                checked={enforceStoreHours} 
+                onChange={(e) => setEnforceStoreHours(e.target.checked)} 
+                className="sr-only peer"
+              />
+              <div className="w-11 h-6 bg-gray-300 peer-focus:outline-hidden rounded-full peer dark:bg-slate-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-primary-600"></div>
+            </label>
+          </div>
+
+          {/* Staff Demo / Testing Override */}
+          <div className="p-4 bg-slate-50 dark:bg-slate-800/40 rounded-2xl border border-dashed border-gray-300 dark:border-slate-700 space-y-3">
+            <div className="flex items-center justify-between">
+              <div>
+                <span className="text-xs font-bold text-gray-800 dark:text-gray-200 uppercase tracking-wider block">
+                  🛠️ Staff Demo Override (Quick Testing)
+                </span>
+                <span className="text-[11px] text-gray-500 dark:text-gray-400">
+                  Instantly test store closed/open behaviors without changing your computer's clock.
+                </span>
+              </div>
+              <span className="text-xs font-mono font-bold px-2 py-0.5 rounded bg-gray-200 dark:bg-slate-700 text-gray-700 dark:text-gray-300">
+                Mode: {storeStatusOverride}
+              </span>
+            </div>
+
+            <div className="grid grid-cols-3 gap-2 text-xs">
+              <button
+                type="button"
+                onClick={() => setStoreStatusOverride('AUTO')}
+                className={`py-2 px-3 rounded-xl font-bold border transition-all ${
+                  storeStatusOverride === 'AUTO'
+                    ? 'bg-primary-600 text-white border-primary-600 shadow-xs'
+                    : 'bg-white dark:bg-slate-800 text-gray-700 dark:text-gray-300 border-gray-200 dark:border-slate-700 hover:bg-gray-100'
+                }`}
+              >
+                🔄 Auto (Clock Time)
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setStoreStatusOverride('FORCE_OPEN')}
+                className={`py-2 px-3 rounded-xl font-bold border transition-all ${
+                  storeStatusOverride === 'FORCE_OPEN'
+                    ? 'bg-emerald-600 text-white border-emerald-600 shadow-xs'
+                    : 'bg-white dark:bg-slate-800 text-emerald-700 dark:text-emerald-400 border-gray-200 dark:border-slate-700 hover:bg-emerald-50'
+                }`}
+              >
+                🟢 Force Open (Test Buy)
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setStoreStatusOverride('FORCE_CLOSED')}
+                className={`py-2 px-3 rounded-xl font-bold border transition-all ${
+                  storeStatusOverride === 'FORCE_CLOSED'
+                    ? 'bg-rose-600 text-white border-rose-600 shadow-xs'
+                    : 'bg-white dark:bg-slate-800 text-rose-700 dark:text-rose-400 border-gray-200 dark:border-slate-700 hover:bg-rose-50'
+                }`}
+              >
+                🔴 Force Closed (Test Block)
+              </button>
             </div>
           </div>
         </div>
