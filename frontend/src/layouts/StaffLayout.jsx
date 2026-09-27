@@ -14,7 +14,10 @@ import {
   Moon,
   ChevronDown,
   Check,
-  Settings
+  Settings,
+  Bike,
+  Users,
+  KeyRound
 } from 'lucide-react';
 
 import { useState } from 'react';
@@ -26,7 +29,7 @@ import { useLanguage } from '../context/LanguageContext';
 export default function StaffLayout() {
   const location = useLocation();
   const navigate = useNavigate();
-  const { orders, logoutStaff, currentStaff, storeSettings } = useSupermarket();
+  const { orders, logoutStaff, currentStaff, isManager, storeSettings, deliveryPartners } = useSupermarket();
   const { theme, toggleTheme, isDark } = useTheme();
   const { language, setLanguage, t, supportedLanguages, currentLangMeta } = useLanguage();
   const [langDropdownOpen, setLangDropdownOpen] = useState(false);
@@ -34,7 +37,7 @@ export default function StaffLayout() {
   const handleSignOut = () => {
     if (window.confirm("Confirm sign out from supermarket staff terminal?")) {
       logoutStaff();
-      navigate('/staff/login', { replace: true });
+      navigate(isManager ? '/manager/login' : '/staff/login', { replace: true });
     }
   };
 
@@ -45,6 +48,8 @@ export default function StaffLayout() {
   const pendingScanGoCount = orders.filter(o => 
     o.type === 'SELF_CHECKOUT' && o.status !== 'COMPLETED'
   ).length;
+
+  const availableRidersCount = deliveryPartners?.filter(p => p.status === 'AVAILABLE').length || null;
 
   const navigation = [
     { name: 'Dashboard', href: '/staff/dashboard', icon: LayoutDashboard },
@@ -59,6 +64,19 @@ export default function StaffLayout() {
       href: '/staff/orders', 
       icon: Truck,
       badge: activeOnlineOrdersCount > 0 ? activeOnlineOrdersCount : null
+    },
+    { 
+      name: 'Delivery Fleet & Staff', 
+      href: '/staff/delivery', 
+      icon: Bike,
+      badge: availableRidersCount
+    },
+    { 
+      name: 'Staff & Team Roster', 
+      href: '/staff/team', 
+      icon: Users,
+      badge: isManager ? 'Manager' : null,
+      badgeColor: 'amber'
     },
     { name: 'POS Billing Counter', href: '/staff/pos', icon: ShoppingCart },
     { name: 'Inventory Management', href: '/staff/inventory', icon: PackageSearch },
@@ -168,7 +186,17 @@ export default function StaffLayout() {
         <header className="bg-white dark:bg-slate-900 shadow-xs border-b border-gray-200 dark:border-slate-800 h-16 flex items-center px-8 justify-between transition-colors">
           
           <div className="flex items-center gap-3">
-            <span className="text-xs font-bold bg-emerald-100 dark:bg-emerald-950/70 text-emerald-900 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-800 px-3 py-1 rounded-full flex items-center gap-2 shadow-2xs">
+            {location.pathname !== '/staff/dashboard' && (
+              <Link
+                to="/staff/dashboard"
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-gray-100 hover:bg-gray-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-gray-700 dark:text-gray-200 rounded-xl text-xs font-bold transition-all shadow-2xs group"
+                title="Back to Staff Dashboard"
+              >
+                <ArrowLeft className="w-3.5 h-3.5 text-primary-600 dark:text-primary-400 group-hover:-translate-x-0.5 transition-transform" />
+                <span>Back to Dashboard</span>
+              </Link>
+            )}
+            <span className="text-xs font-bold bg-emerald-100 dark:bg-emerald-950/70 text-emerald-900 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-800 px-3 py-1 rounded-full hidden sm:flex items-center gap-2 shadow-2xs">
               <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
               <span><strong>{storeSettings?.storeName || 'SmartMart'}</strong> — Indiranagar Supercenter (Terminal #01)</span>
             </span>
@@ -240,17 +268,28 @@ export default function StaffLayout() {
 
             <div className="h-6 w-px bg-gray-200 dark:bg-slate-800"></div>
 
-            {/* Admin Avatar */}
+            {/* Staff / Manager Identity Badge */}
             <div className="flex items-center gap-3">
-              <div className="w-8 h-8 rounded-full bg-primary-600 text-white font-black flex items-center justify-center text-xs shadow-xs">
-                {(currentStaff?.name || 'AD').substring(0, 2).toUpperCase()}
+              <div className={cn(
+                "w-8 h-8 rounded-full text-white font-black flex items-center justify-center text-xs shadow-xs",
+                isManager ? "bg-gradient-to-br from-amber-500 to-amber-700 text-slate-950 font-black ring-2 ring-amber-400/50" : "bg-primary-600"
+              )}>
+                {(currentStaff?.name || 'SM').substring(0, 2).toUpperCase()}
               </div>
               <div>
-                <div className="text-xs font-bold text-gray-900 dark:text-white leading-tight">
-                  {currentStaff?.name || 'Admin Manager'}
+                <div className="text-xs font-bold text-gray-900 dark:text-white leading-tight flex items-center gap-1.5">
+                  <span>{currentStaff?.name || (isManager ? 'Rohan Mehra' : 'Store Associate')}</span>
+                  <span className={cn(
+                    "text-[9px] font-black uppercase px-1.5 py-0.2 rounded-md",
+                    isManager 
+                      ? "bg-amber-100 dark:bg-amber-950 text-amber-800 dark:text-amber-300 border border-amber-300 dark:border-amber-800" 
+                      : "bg-blue-50 dark:bg-blue-950 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800"
+                  )}>
+                    {isManager ? 'Manager' : 'Staff'}
+                  </span>
                 </div>
-                <div className="text-[10px] text-gray-500 dark:text-gray-400">
-                  {currentStaff?.role || 'Supermarket Operator'}
+                <div className="text-[10px] text-gray-500 dark:text-gray-400 truncate max-w-[150px]">
+                  {currentStaff?.designation || (isManager ? 'Store Operations GM' : 'Cashier & POS Associate')}
                 </div>
               </div>
             </div>

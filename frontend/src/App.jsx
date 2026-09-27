@@ -26,7 +26,17 @@ import SalesHistory from './pages/staff/SalesHistory';
 import Products from './pages/staff/Products';
 import StaffOrders from './pages/staff/StaffOrders';
 import StaffVerification from './pages/staff/StaffVerification';
+import StaffDeliveryFleet from './pages/staff/StaffDeliveryFleet';
+import StaffTeamManagement from './pages/staff/StaffTeamManagement';
 import StaffSettings from './pages/staff/StaffSettings';
+
+// Manager Pages
+import ManagerLogin from './pages/manager/ManagerLogin';
+
+// Delivery Pages
+import DeliveryProtectedRoute from './components/delivery/DeliveryProtectedRoute';
+import DeliveryLogin from './pages/delivery/DeliveryLogin';
+import DeliveryDashboard from './pages/delivery/DeliveryDashboard';
 
 function App() {
   return (
@@ -49,14 +59,19 @@ function App() {
                 <Route path="settings" element={<CustomerSettings />} />
               </Route>
 
-              {/* Staff Routes */}
+              {/* Working Staff & Store Manager Login Routes */}
+              <Route path="/manager/login" element={<ManagerLogin />} />
               <Route path="/staff/login" element={<StaffLogin />} />
+
+              {/* Staff & Manager Protected Routes */}
               <Route element={<StaffProtectedRoute />}>
                 <Route path="/staff" element={<StaffLayout />}>
                   <Route index element={<Navigate to="/staff/dashboard" replace />} />
                   <Route path="dashboard" element={<Dashboard />} />
                   <Route path="verify" element={<StaffVerification />} />
                   <Route path="orders" element={<StaffOrders />} />
+                  <Route path="delivery" element={<StaffDeliveryFleet />} />
+                  <Route path="team" element={<StaffTeamManagement />} />
                   <Route path="pos" element={<POSBilling />} />
                   <Route path="inventory" element={<Inventory />} />
                   <Route path="purchases" element={<Purchases />} />
@@ -64,6 +79,13 @@ function App() {
                   <Route path="products" element={<Products />} />
                   <Route path="settings" element={<StaffSettings />} />
                 </Route>
+              </Route>
+
+              {/* Delivery Partner Routes */}
+              <Route path="/delivery/login" element={<DeliveryLogin />} />
+              <Route element={<DeliveryProtectedRoute />}>
+                <Route path="/delivery" element={<Navigate to="/delivery/dashboard" replace />} />
+                <Route path="/delivery/dashboard" element={<DeliveryDashboard />} />
               </Route>
             </Routes>
           </BrowserRouter>

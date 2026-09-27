@@ -23,25 +23,20 @@ import {
 } from 'lucide-react';
 import { soundEffects } from '../../lib/audio';
 
-const DEMO_RIDERS = [
-  { id: 'r1', name: 'Rajesh Kumar', phone: '+91 98765 43210', rating: 4.9, bikeNo: 'KA 05 MN 4821', avatar: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=100&h=100&fit=crop&crop=face' },
-  { id: 'r2', name: 'Vikram Singh', phone: '+91 98450 11223', rating: 4.85, bikeNo: 'KA 01 EK 9024', avatar: 'https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?w=100&h=100&fit=crop&crop=face' },
-  { id: 'r3', name: 'Sunita Rao', phone: '+91 97410 55667', rating: 4.95, bikeNo: 'KA 03 GH 1129', avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100&h=100&fit=crop&crop=face' }
-];
-
 export default function StaffOrders() {
   const { 
     orders, 
     advanceOrderStatus, 
     completeOrderImmediately, 
-    cancelOrder 
+    cancelOrder,
+    deliveryPartners
   } = useSupermarket();
 
   const [filterType, setFilterType] = useState('ALL'); // 'ALL' | 'DELIVERY' | 'TAKEAWAY' | 'SELF_CHECKOUT'
   const [packingOrder, setPackingOrder] = useState(null);
   const [packedChecklist, setPackedChecklist] = useState({});
   const [assigningRiderOrder, setAssigningRiderOrder] = useState(null);
-  const [selectedRider, setSelectedRider] = useState(DEMO_RIDERS[0]);
+  const [selectedRider, setSelectedRider] = useState(() => deliveryPartners[0] || null);
 
   const filteredOrders = orders.filter(o => {
     if (filterType === 'ALL') return true;
@@ -86,7 +81,7 @@ export default function StaffOrders() {
 
   const handleConfirmAssignRider = () => {
     if (!assigningRiderOrder) return;
-    advanceOrderStatus(assigningRiderOrder.id);
+    advanceOrderStatus(assigningRiderOrder.id, selectedRider);
     setAssigningRiderOrder(null);
     soundEffects.playSuccessChime();
   };
@@ -367,25 +362,27 @@ export default function StaffOrders() {
               </button>
             </div>
 
-            <div className="space-y-2.5">
-              {DEMO_RIDERS.map(rider => (
+            <div className="space-y-2.5 max-h-60 overflow-y-auto pr-1">
+              {deliveryPartners.map(rider => (
                 <div
                   key={rider.id}
                   onClick={() => setSelectedRider(rider)}
                   className={`p-3.5 rounded-2xl border flex items-center justify-between cursor-pointer transition-all ${
-                    selectedRider.id === rider.id ? 'border-purple-600 bg-purple-50/70 shadow-xs' : 'border-gray-200 hover:bg-gray-50'
+                    selectedRider?.id === rider.id ? 'border-purple-600 bg-purple-50/70 shadow-xs' : 'border-gray-200 hover:bg-gray-50'
                   }`}
                 >
                   <div className="flex items-center gap-3">
                     <img src={rider.avatar} alt={rider.name} className="w-10 h-10 rounded-full object-cover border border-purple-200" />
                     <div>
                       <div className="font-extrabold text-xs text-gray-900">{rider.name}</div>
-                      <div className="text-[10px] text-gray-400">{rider.bikeNo} • ★ {rider.rating}</div>
+                      <div className="text-[10px] text-gray-400">{rider.vehicleNo || rider.bikeNo} • ★ {rider.rating}</div>
                     </div>
                   </div>
 
-                  <span className="text-[10px] font-black text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded-full">
-                    Ready to Pickup
+                  <span className={`text-[10px] font-black px-2 py-0.5 rounded-full ${
+                    rider.status === 'AVAILABLE' ? 'text-emerald-700 bg-emerald-100' : 'text-blue-700 bg-blue-100'
+                  }`}>
+                    {rider.status === 'AVAILABLE' ? 'Available' : 'On Delivery'}
                   </span>
                 </div>
               ))}
@@ -394,8 +391,9 @@ export default function StaffOrders() {
             <Button
               className="w-full h-12 bg-purple-700 hover:bg-purple-800 text-white font-bold text-xs shadow-md"
               onClick={handleConfirmAssignRider}
+              disabled={!selectedRider}
             >
-              Assign {selectedRider.name} & Dispatch Order →
+              Assign {selectedRider?.name || 'Rider'} & Dispatch Order →
             </Button>
           </div>
         </div>

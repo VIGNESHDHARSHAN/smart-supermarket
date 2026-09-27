@@ -162,12 +162,19 @@ export default function CustomerSettings() {
           </p>
         </div>
 
-        <Link
-          to="/customer"
-          className="inline-flex items-center text-xs font-bold text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white transition-colors bg-white dark:bg-slate-900 px-4 py-2 rounded-xl border border-gray-200 dark:border-slate-800 shadow-2xs"
+        <button
+          type="button"
+          onClick={() => {
+            if (window.history.state?.idx > 0) {
+              navigate(-1);
+            } else {
+              navigate('/customer', { replace: true });
+            }
+          }}
+          className="inline-flex items-center text-xs font-bold text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white transition-colors bg-white dark:bg-slate-900 px-4 py-2 rounded-xl border border-gray-200 dark:border-slate-800 shadow-2xs cursor-pointer"
         >
           <ArrowLeft className="w-4 h-4 mr-1.5" /> Back to Store
-        </Link>
+        </button>
       </div>
 
       {/* Success Notification Alert */}

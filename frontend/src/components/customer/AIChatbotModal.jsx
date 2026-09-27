@@ -83,123 +83,85 @@ export default function AIChatbotModal({ isOpen, onClose }) {
   const silenceTimerRef = useRef(null);
   const captionClearTimerRef = useRef(null);
 
-  // Audio level visualizer state for real microphone input
+  const transcriptBufferRef = useRef('');
+  const isStartingRecognitionRef = useRef(false);
+  const visualizerTimerRef = useRef(null);
+
+  // Audio level visualizer state
   const [audioLevel, setAudioLevel] = useState(0);
   const [showVoiceHub, setShowVoiceHub] = useState(false);
-  const audioContextRef = useRef(null);
-  const analyserRef = useRef(null);
-  const audioStreamRef = useRef(null);
-  const animFrameRef = useRef(null);
 
   // Auto-scroll to bottom of conversation
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, isTyping]);
 
-  // Clean up all audio streams and speech on unmount/close
-  const cleanupAudioStreams = useCallback(() => {
-    if (animFrameRef.current) {
-      cancelAnimationFrame(animFrameRef.current);
-    }
-    if (audioStreamRef.current) {
-      audioStreamRef.current.getTracks().forEach(track => track.stop());
-      audioStreamRef.current = null;
-    }
-    if (audioContextRef.current && audioContextRef.current.state !== 'closed') {
-      try {
-        audioContextRef.current.close();
-      } catch (e) {}
-      audioContextRef.current = null;
-    }
-    setAudioLevel(0);
-  }, []);
-
   // Clean up speech synthesis & recognition on modal close or unmount
   useEffect(() => {
     if (!isOpen) {
       soundEffects.stopSpeaking();
       setIsAiSpeaking(false);
-      if (recognitionRef.current && isListening) {
+      if (silenceTimerRef.current) {
+        clearTimeout(silenceTimerRef.current);
+        silenceTimerRef.current = null;
+      }
+      if (visualizerTimerRef.current) {
+        clearInterval(visualizerTimerRef.current);
+        visualizerTimerRef.current = null;
+      }
+      if (recognitionRef.current) {
         try {
-          recognitionRef.current.stop();
+          recognitionRef.current.abort();
         } catch (e) {}
       }
-      cleanupAudioStreams();
       setIsListening(false);
+      isStartingRecognitionRef.current = false;
+      transcriptBufferRef.current = '';
+      setAudioLevel(0);
       setShowVoiceHub(false);
       setLiveCaption({ active: false, type: 'ai', text: '', isInterim: false });
       setVoiceError(null);
     }
     return () => {
-      cleanupAudioStreams();
       soundEffects.stopSpeaking();
       setIsAiSpeaking(false);
+      if (silenceTimerRef.current) {
+        clearTimeout(silenceTimerRef.current);
+      }
+      if (visualizerTimerRef.current) {
+        clearInterval(visualizerTimerRef.current);
+      }
+      if (recognitionRef.current) {
+        try {
+          recognitionRef.current.abort();
+        } catch (e) {}
+      }
     };
-  }, [isOpen, isListening, cleanupAudioStreams]);
-
-  // Start real-time audio analysis from device microphone
-  const startAudioVisualizer = async () => {
-    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) return null;
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      audioStreamRef.current = stream;
-
-      const AudioCtx = window.AudioContext || window.webkitAudioContext;
-      if (AudioCtx) {
-        const audioCtx = new AudioCtx();
-        audioContextRef.current = audioCtx;
-        const source = audioCtx.createMediaStreamSource(stream);
-        const analyser = audioCtx.createAnalyser();
-        analyser.fftSize = 64;
-        source.connect(analyser);
-        analyserRef.current = analyser;
-
-        const bufferLength = analyser.frequencyBinCount;
-        const dataArray = new Uint8Array(bufferLength);
-
-        const updateMeter = () => {
-          if (!analyserRef.current) return;
-          analyserRef.current.getByteFrequencyData(dataArray);
-          let sum = 0;
-          for (let i = 0; i < bufferLength; i++) {
-            sum += dataArray[i];
-          }
-          const average = sum / bufferLength;
-          setAudioLevel(Math.min(100, Math.round((average / 128) * 100)));
-          animFrameRef.current = requestAnimationFrame(updateMeter);
-        };
-
-        updateMeter();
-      }
-      return stream;
-    } catch (e) {
-      console.warn("Audio visualizer stream error:", e);
-      return null;
-    }
-  };
-
-  // Handle Speech Recognition Result & Lifecycle
-  const stopListening = useCallback(() => {
-    if (silenceTimerRef.current) {
-      clearTimeout(silenceTimerRef.current);
-    }
-    if (recognitionRef.current) {
-      try {
-        recognitionRef.current.stop();
-      } catch (e) {
-        console.warn("Recognition stop error:", e);
-      }
-    }
-    cleanupAudioStreams();
-    setIsListening(false);
-  }, [cleanupAudioStreams]);
+  }, [isOpen]);
 
   const handleSendMessage = useCallback((textToSend) => {
     const query = (textToSend || inputMessage).trim();
     if (!query) return;
 
-    // Stop active listening and speech when user sends
-    stopListening();
+    // Direct stop recognition and cleanup
+    if (silenceTimerRef.current) {
+      clearTimeout(silenceTimerRef.current);
+      silenceTimerRef.current = null;
+    }
+    if (visualizerTimerRef.current) {
+      clearInterval(visualizerTimerRef.current);
+      visualizerTimerRef.current = null;
+    }
+    setAudioLevel(0);
+    transcriptBufferRef.current = '';
+    isStartingRecognitionRef.current = false;
+
+    if (recognitionRef.current) {
+      try {
+        recognitionRef.current.stop();
+      } catch (e) {}
+    }
+    setIsListening(false);
     soundEffects.stopSpeaking();
     setIsAiSpeaking(false);
     setShowVoiceHub(false);
@@ -282,7 +244,7 @@ export default function AIChatbotModal({ isOpen, onClose }) {
             clearTimeout(captionClearTimerRef.current);
             captionClearTimerRef.current = setTimeout(() => {
               setLiveCaption(prev => prev.type === 'ai' ? { ...prev, active: false } : prev);
-            }, 4500);
+            }, 4000);
           },
           onError: () => {
             setIsAiSpeaking(false);
@@ -293,56 +255,105 @@ export default function AIChatbotModal({ isOpen, onClose }) {
           }
         });
       } else {
-        setIsAiSpeaking(true);
+        // Voice is muted or disabled: do not fake speaking
+        setIsAiSpeaking(false);
         soundEffects.playNotificationPing();
-        const speakDuration = Math.min(8000, Math.max(3500, (spokenText || '').length * 55));
-        setTimeout(() => {
-          setIsAiSpeaking(false);
-        }, speakDuration);
-
-        clearTimeout(captionClearTimerRef.current);
-        captionClearTimerRef.current = setTimeout(() => {
-          setLiveCaption(prev => prev.type === 'ai' ? { ...prev, active: false } : prev);
-        }, speakDuration + 2500);
+        if (liveCaptionEnabled && spokenText) {
+          setLiveCaption({
+            active: true,
+            type: 'ai',
+            text: spokenText,
+            isInterim: false
+          });
+          clearTimeout(captionClearTimerRef.current);
+          captionClearTimerRef.current = setTimeout(() => {
+            setLiveCaption(prev => prev.type === 'ai' ? { ...prev, active: false } : prev);
+          }, 3500);
+        }
       }
     }, 500);
-  }, [inputMessage, products, orders, popularRecipes, shoppingList, language, t, liveCaptionEnabled, voiceEnabled, currentLangMeta, stopListening]);
+  }, [inputMessage, products, orders, popularRecipes, shoppingList, language, t, liveCaptionEnabled, voiceEnabled, currentLangMeta]);
 
-  // Initialize Speech Recognition & Audio Capture
-  const startListening = async () => {
+  // Stop active speech recognition safely and submit any pending spoken text
+  const stopListening = useCallback(() => {
+    if (silenceTimerRef.current) {
+      clearTimeout(silenceTimerRef.current);
+      silenceTimerRef.current = null;
+    }
+    if (visualizerTimerRef.current) {
+      clearInterval(visualizerTimerRef.current);
+      visualizerTimerRef.current = null;
+    }
+    setAudioLevel(0);
+
+    if (recognitionRef.current) {
+      try {
+        recognitionRef.current.stop();
+      } catch (e) {
+        console.warn("Recognition stop error:", e);
+      }
+    }
+    setIsListening(false);
+    isStartingRecognitionRef.current = false;
+
+    // Send buffered speech text immediately if user stopped speaking
+    const buffered = transcriptBufferRef.current?.trim();
+    if (buffered) {
+      transcriptBufferRef.current = '';
+      handleSendMessage(buffered);
+    }
+  }, [handleSendMessage]);
+
+  // Initialize Speech Recognition cleanly without hardware locking
+  const startListening = () => {
     setVoiceError(null);
     soundEffects.stopSpeaking();
+    setIsAiSpeaking(false);
 
-    // Start real-time hardware microphone visualizer
-    await startAudioVisualizer();
+    if (isListening || isStartingRecognitionRef.current) {
+      return;
+    }
 
     const SpeechRecognition = typeof window !== 'undefined' 
       ? (window.SpeechRecognition || window.webkitSpeechRecognition) 
       : null;
 
     if (!SpeechRecognition) {
-      setVoiceError("Your browser doesn't support Google Speech API. You can use our Voice Assistant Hub below!");
+      setVoiceError("Speech recognition is not supported in this browser. Please use the Voice Assistant Hub below!");
       setShowVoiceHub(true);
       return;
     }
 
     try {
+      isStartingRecognitionRef.current = true;
+      transcriptBufferRef.current = '';
+
       if (recognitionRef.current) {
-        try { recognitionRef.current.abort(); } catch (e) {}
+        try {
+          recognitionRef.current.abort();
+        } catch (e) {}
       }
 
       const recognition = new SpeechRecognition();
-      recognition.continuous = false;
+      recognition.continuous = true;
       recognition.interimResults = true;
       recognition.maxAlternatives = 1;
-      
+
       const speechLang = currentLangMeta?.speechLang || (typeof navigator !== 'undefined' ? navigator.language : 'en-US');
       recognition.lang = speechLang;
 
       recognition.onstart = () => {
         setIsListening(true);
+        isStartingRecognitionRef.current = false;
         setVoiceError(null);
         soundEffects.playNotificationPing();
+
+        // Audio visualizer pulses while active
+        if (visualizerTimerRef.current) clearInterval(visualizerTimerRef.current);
+        visualizerTimerRef.current = setInterval(() => {
+          setAudioLevel(Math.floor(25 + Math.random() * 65));
+        }, 120);
+
         if (liveCaptionEnabled) {
           setLiveCaption({
             active: true,
@@ -351,6 +362,14 @@ export default function AIChatbotModal({ isOpen, onClose }) {
             isInterim: true
           });
         }
+      };
+
+      recognition.onsoundstart = () => {
+        setAudioLevel(Math.floor(55 + Math.random() * 40));
+      };
+
+      recognition.onsoundend = () => {
+        setAudioLevel(15);
       };
 
       recognition.onresult = (event) => {
@@ -367,8 +386,9 @@ export default function AIChatbotModal({ isOpen, onClose }) {
           }
         }
 
-        const currentSaid = finalTranscript || interimTranscript;
+        const currentSaid = (finalTranscript || interimTranscript).trim();
         if (currentSaid) {
+          transcriptBufferRef.current = currentSaid;
           setInputMessage(currentSaid);
 
           if (liveCaptionEnabled) {
@@ -379,52 +399,90 @@ export default function AIChatbotModal({ isOpen, onClose }) {
               isInterim: !finalTranscript
             });
           }
-        }
 
-        if (finalTranscript && finalTranscript.trim().length > 0) {
+          // Dynamic bounce while user speaks
+          setAudioLevel(Math.floor(65 + Math.random() * 35));
+
+          // Auto-send when user finishes or pauses
           clearTimeout(silenceTimerRef.current);
           silenceTimerRef.current = setTimeout(() => {
-            handleSendMessage(finalTranscript.trim());
-          }, 800);
+            const textToSend = transcriptBufferRef.current?.trim();
+            if (textToSend) {
+              transcriptBufferRef.current = '';
+              try {
+                recognition.stop();
+              } catch (e) {}
+              handleSendMessage(textToSend);
+            }
+          }, finalTranscript ? 1200 : 2000);
         }
       };
 
       recognition.onerror = (event) => {
         console.warn("Speech recognition error:", event.error);
-        setLiveCaption(prev => prev.type === 'user' ? { ...prev, active: false } : prev);
-        
-        if (event.error === 'network') {
-          // In Brave or restrictive firewalls, Google speech server is blocked.
-          setVoiceError("Google Speech Server was blocked by your browser/network (e.g. Brave Shields or offline). Select any voice command below or speak with Voice Hub!");
+        isStartingRecognitionRef.current = false;
+
+        if (event.error === 'no-speech') {
+          if (!transcriptBufferRef.current) {
+            setVoiceError("No speech detected. Tap the mic to speak, or pick any voice prompt below.");
+            setShowVoiceHub(true);
+          }
+        } else if (event.error === 'network') {
+          setVoiceError("Speech recognition server unavailable. Tap any Voice Prompt below or type your query!");
           setShowVoiceHub(true);
         } else if (event.error === 'not-allowed' || event.error === 'service-not-allowed') {
-          setVoiceError("Microphone permission was blocked. Please click the lock 🔒 in your browser URL bar to allow microphone.");
+          setVoiceError("Microphone permission was denied. Please allow microphone in your browser URL bar.");
           setShowVoiceHub(true);
-        } else if (event.error === 'no-speech') {
-          setVoiceError("No speech detected. Select a voice prompt below or try speaking again.");
-          setShowVoiceHub(true);
+        } else if (event.error === 'aborted') {
+          // Normal stop or abort
         } else {
           setVoiceError(`Voice input: ${event.error}. Use Voice Hub below.`);
           setShowVoiceHub(true);
         }
+
+        if (event.error !== 'no-speech') {
+          setLiveCaption(prev => prev.type === 'user' ? { ...prev, active: false } : prev);
+        }
+
+        if (visualizerTimerRef.current) {
+          clearInterval(visualizerTimerRef.current);
+          visualizerTimerRef.current = null;
+        }
+        setAudioLevel(0);
         setIsListening(false);
-        cleanupAudioStreams();
       };
 
       recognition.onend = () => {
+        isStartingRecognitionRef.current = false;
         setIsListening(false);
-        cleanupAudioStreams();
+        if (visualizerTimerRef.current) {
+          clearInterval(visualizerTimerRef.current);
+          visualizerTimerRef.current = null;
+        }
+        setAudioLevel(0);
+
+        // Submit captured text upon completion
+        const buffered = transcriptBufferRef.current?.trim();
+        if (buffered) {
+          transcriptBufferRef.current = '';
+          handleSendMessage(buffered);
+        }
       };
 
       recognitionRef.current = recognition;
       recognition.start();
     } catch (err) {
       console.error("Speech recognition startup error:", err);
-      setLiveCaption(prev => prev.type === 'user' ? { ...prev, active: false } : prev);
-      setVoiceError("Could not connect to online speech service. Voice Hub activated below.");
-      setShowVoiceHub(true);
+      isStartingRecognitionRef.current = false;
       setIsListening(false);
-      cleanupAudioStreams();
+      if (visualizerTimerRef.current) {
+        clearInterval(visualizerTimerRef.current);
+        visualizerTimerRef.current = null;
+      }
+      setAudioLevel(0);
+      setLiveCaption(prev => prev.type === 'user' ? { ...prev, active: false } : prev);
+      setVoiceError("Online speech service error. Voice Hub activated below.");
+      setShowVoiceHub(true);
     }
   };
 
@@ -465,28 +523,31 @@ export default function AIChatbotModal({ isOpen, onClose }) {
                     text: greetingText,
                     isInterim: false
                   });
-                  setIsAiSpeaking(true);
                   if (voiceEnabled) {
+                    setIsAiSpeaking(true);
                     soundEffects.speakText(greetingText, currentLangMeta?.speechLang || 'en-US', {
                       onStart: () => setIsAiSpeaking(true),
                       onEnd: () => setIsAiSpeaking(false),
                       onError: () => setIsAiSpeaking(false)
                     });
                   } else {
-                    setTimeout(() => setIsAiSpeaking(false), 3500);
+                    setIsAiSpeaking(false);
+                    setTimeout(() => {
+                      setLiveCaption(prev => prev.type === 'ai' ? { ...prev, active: false } : prev);
+                    }, 3500);
                   }
                 }
               }}
             >
-              <div className="w-10 h-10 rounded-2xl bg-white/15 dark:bg-white/10 backdrop-blur-md border border-white/30 flex items-center justify-center text-white relative shadow-inner">
-                <Bot className="w-5 h-5 text-white" />
-                <span className="absolute -bottom-1 -right-1 w-3 h-3 bg-emerald-400 border-2 border-primary-900 rounded-full animate-pulse shadow-xs"></span>
+              <div className="w-10 h-10 rounded-2xl overflow-hidden border-2 border-white/40 shadow-inner flex items-center justify-center relative bg-emerald-800 flex-shrink-0">
+                <img src="/smart-avatar.jpg" alt="Gemma" className="w-full h-full object-cover object-top" />
+                <span className="absolute -bottom-0.5 -right-0.5 w-3 h-3 bg-emerald-400 border-2 border-primary-900 rounded-full animate-pulse shadow-xs"></span>
               </div>
             </div>
             <div>
               <div className="flex items-center gap-2">
                 <h3 className="font-extrabold text-base sm:text-lg tracking-tight leading-tight">
-                  SmartMart AI Assistant
+                  Gemma • SmartMart AI Concierge
                 </h3>
                 <span className="bg-emerald-400 text-slate-900 text-[10px] font-black px-2 py-0.5 rounded-full uppercase tracking-wider shadow-xs">
                   Active
@@ -564,9 +625,13 @@ export default function AIChatbotModal({ isOpen, onClose }) {
               <div className="flex-shrink-0 flex flex-col items-center">
                 <div className="relative w-14 h-14 rounded-2xl bg-gradient-to-tr from-primary-600 via-indigo-600 to-emerald-500 p-0.5 shadow-lg flex items-center justify-center">
                   <div className="w-full h-full bg-slate-900 rounded-[14px] flex items-center justify-center relative overflow-hidden">
-                    <Bot className={`w-7 h-7 ${isAiSpeaking ? 'text-emerald-400 animate-bounce' : 'text-cyan-400'}`} />
+                    <img 
+                      src="/smart-avatar.jpg" 
+                      alt="Gemma AI Concierge" 
+                      className={`w-full h-full object-cover object-top ${isAiSpeaking ? 'scale-110' : 'scale-100'} transition-transform duration-300`} 
+                    />
                     {isAiSpeaking && (
-                      <div className="absolute inset-0 bg-emerald-400/20 animate-ping rounded-xl pointer-events-none" />
+                      <div className="absolute inset-0 border-2 border-emerald-400 animate-pulse rounded-xl pointer-events-none" />
                     )}
                   </div>
                 </div>
@@ -706,8 +771,8 @@ export default function AIChatbotModal({ isOpen, onClose }) {
             >
               <div className="flex items-start gap-2.5 max-w-[90%] sm:max-w-[85%]">
                 {msg.sender === 'bot' && (
-                  <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-primary-600 to-indigo-600 text-white flex items-center justify-center shadow-xs flex-shrink-0 mt-0.5" title="SmartMart AI Assistant">
-                    <Bot className="w-4.5 h-4.5" />
+                  <div className="w-8 h-8 rounded-xl overflow-hidden border border-emerald-400/40 shadow-xs flex-shrink-0 mt-0.5 bg-emerald-800" title="Gemma AI Shopping Assistant">
+                    <img src="/smart-avatar.jpg" alt="Gemma" className="w-full h-full object-cover object-top" />
                   </div>
                 )}
 

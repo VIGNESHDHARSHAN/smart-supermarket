@@ -17,6 +17,8 @@ app.use('/api/products', require('./routes/products'));
 app.use('/api/orders', require('./routes/orders'));
 app.use('/api/gate', require('./routes/gate'));
 app.use('/api/payment', require('./routes/payment'));
+app.use('/api/delivery', require('./routes/delivery'));
+app.use('/api/staff', require('./routes/staff'));
 
 // Health Check Endpoint with MongoDB Status
 app.get('/api/health', (req, res) => {

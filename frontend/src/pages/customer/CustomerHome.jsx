@@ -32,7 +32,10 @@ export default function CustomerHome() {
     addToShoppingList, 
     shoppingList, 
     popularRecipes, 
-    addRecipeToCart 
+    addRecipeToCart,
+    currentUser,
+    openAiAssistant,
+    orders
   } = useSupermarket();
   const [searchQuery, setSearchQuery] = useState('');
   const [mapModalProduct, setMapModalProduct] = useState(null);
@@ -59,93 +62,270 @@ export default function CustomerHome() {
   return (
     <div className="space-y-12">
       
-      {/* Hero Section */}
-      <section className="bg-gradient-to-br from-primary-700 via-primary-600 to-emerald-700 dark:from-primary-900 dark:via-slate-900 dark:to-emerald-950 rounded-3xl overflow-hidden shadow-xl text-white relative border border-primary-500/20">
-        <div className="px-6 py-12 md:py-16 text-center max-w-4xl mx-auto relative z-10">
-          
-          <div className="flex justify-center mb-6">
-            <div className="bg-white/95 dark:bg-white p-3 px-6 rounded-3xl shadow-2xl border border-white/40 inline-flex items-center justify-center hover:scale-105 transition-all duration-300">
-              <img src="/gosmart-logo.png" alt="GoSmart Supermarket System" className="h-16 md:h-20 w-auto object-contain drop-shadow-xs" />
+      {/* Hero Section with Interactive 3D Avatar Concierge */}
+      <section className="bg-gradient-to-br from-primary-700 via-primary-600 to-emerald-700 dark:from-primary-950 dark:via-slate-900 dark:to-emerald-950 rounded-3xl overflow-hidden shadow-2xl text-white relative border border-primary-500/30">
+        
+        {/* Background ambient lighting orbs */}
+        <div className="absolute -top-24 -left-24 w-96 h-96 bg-emerald-400/20 rounded-full blur-3xl pointer-events-none" />
+        <div className="absolute -bottom-24 -right-24 w-96 h-96 bg-primary-400/20 rounded-full blur-3xl pointer-events-none" />
+        
+        <div className="px-6 py-10 md:py-14 max-w-7xl mx-auto relative z-10">
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-10 items-center">
+            
+            {/* Left Column: Headlines, Search & Quick Tiles (7 cols on lg) */}
+            <div className="lg:col-span-7 text-left space-y-6">
+              
+              <div className="flex flex-wrap items-center gap-2.5">
+                <div className="inline-flex items-center gap-2 bg-white/20 backdrop-blur-md px-3.5 py-1 rounded-full text-xs font-black tracking-wider uppercase border border-white/20 shadow-xs">
+                  <span className="w-2 h-2 rounded-full bg-yellow-300 animate-ping"></span>
+                  Real-Time Smart Supermarket
+                </div>
+                <div className="inline-flex items-center gap-1.5 bg-emerald-400/20 backdrop-blur-md px-3 py-1 rounded-full text-xs font-bold text-emerald-200 border border-emerald-400/30 shadow-xs">
+                  <Sparkles className="w-3.5 h-3.5 text-yellow-300" />
+                  <span>Meet Gemma • AI Shopping Concierge</span>
+                </div>
+              </div>
+
+              <h1 className="text-3xl sm:text-4xl md:text-5xl font-black tracking-tight leading-tight">
+                Fresh Groceries Delivered in <span className="text-yellow-300 underline decoration-yellow-400 decoration-wavy decoration-2">15 Minutes</span>
+              </h1>
+
+              <p className="text-sm sm:text-base text-primary-100 max-w-xl font-medium leading-relaxed">
+                Order online with live GPS delivery tracking, pick up from express store lockers, or enjoy queue-less in-store Scan &amp; Go checkout.
+              </p>
+
+              {/* Main Search Bar */}
+              <form onSubmit={handleSearch} className="max-w-xl relative">
+                <div className="relative flex items-center w-full h-13 sm:h-14 rounded-2xl bg-white dark:bg-slate-900 overflow-hidden shadow-2xl focus-within:ring-4 focus-within:ring-yellow-300/50 transition-all border border-transparent dark:border-slate-700">
+                  <div className="grid place-items-center h-full w-12 text-gray-400">
+                    <Search className="h-5 w-5" />
+                  </div>
+                  <input
+                    className="peer h-full w-full outline-none text-gray-800 dark:text-white text-sm sm:text-base pr-4 bg-transparent font-medium"
+                    type="text"
+                    id="search"
+                    placeholder={t('search_placeholder', 'Search fresh vegetables, groceries, dairy, drinks...')}
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                  />
+                  <button type="submit" className="h-full px-5 sm:px-6 bg-charcoal-900 dark:bg-primary-600 text-white font-bold text-xs sm:text-sm hover:bg-black dark:hover:bg-primary-700 transition-colors flex items-center gap-1.5">
+                    <span>Search</span>
+                    <ArrowRight className="w-4 h-4" />
+                  </button>
+                </div>
+              </form>
+
+              {/* 3 Interactive Mode Quick Tiles */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-2">
+                <Link
+                  to="/customer/products"
+                  className="bg-white/10 hover:bg-white/20 backdrop-blur-md p-3 rounded-2xl border border-white/20 transition-all group flex items-center gap-3"
+                >
+                  <div className="bg-yellow-400 text-charcoal-900 p-2 rounded-xl group-hover:scale-110 transition-transform">
+                    <Truck className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <div className="font-bold text-xs">🛵 15-Min Delivery</div>
+                    <div className="text-[10px] text-primary-100">Live GPS tracking</div>
+                  </div>
+                </Link>
+
+                <Link
+                  to="/customer/list"
+                  className="bg-white/10 hover:bg-white/20 backdrop-blur-md p-3 rounded-2xl border border-white/20 transition-all group flex items-center gap-3"
+                >
+                  <div className="bg-orange-400 text-charcoal-900 p-2 rounded-xl group-hover:scale-110 transition-transform">
+                    <Package className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <div className="font-bold text-xs">🛍️ Store Take Away</div>
+                    <div className="text-[10px] text-primary-100">Express locker PIN</div>
+                  </div>
+                </Link>
+
+                <Link
+                  to="/customer/scan"
+                  className="bg-white/10 hover:bg-white/20 backdrop-blur-md p-3 rounded-2xl border border-white/20 transition-all group flex items-center gap-3"
+                >
+                  <div className="bg-purple-400 text-charcoal-900 p-2 rounded-xl group-hover:scale-110 transition-transform">
+                    <QrCode className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <div className="font-bold text-xs">⚡ In-Store Scan &amp; Go</div>
+                    <div className="text-[10px] text-primary-100">Skip all queues</div>
+                  </div>
+                </Link>
+              </div>
+
+            </div>
+
+            {/* Right Column: Attractive 3D Avatar Showcase (5 cols on lg) */}
+            <div className="lg:col-span-5 flex justify-center lg:justify-end">
+              <div 
+                onClick={() => openAiAssistant?.()}
+                className="w-full max-w-md bg-white/10 dark:bg-slate-900/80 backdrop-blur-xl p-5 sm:p-6 rounded-3xl border-2 border-emerald-400/40 shadow-[0_20px_50px_rgba(16,185,129,0.25)] hover:shadow-[0_25px_60px_rgba(16,185,129,0.4)] transition-all duration-300 group cursor-pointer relative overflow-hidden text-left"
+              >
+                {/* Decorative background glow */}
+                <div className="absolute -top-12 -right-12 w-44 h-44 bg-emerald-400/30 rounded-full blur-2xl pointer-events-none group-hover:scale-125 transition-transform" />
+                <div className="absolute -bottom-10 -left-10 w-36 h-36 bg-indigo-500/20 rounded-full blur-xl pointer-events-none" />
+
+                <div className="flex items-center justify-between mb-4 relative z-10">
+                  <span className="inline-flex items-center gap-1.5 bg-emerald-500/30 text-emerald-200 border border-emerald-400/40 text-[11px] font-black uppercase tracking-wider px-3 py-1 rounded-full shadow-xs">
+                    <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping"></span>
+                    Live AI Concierge
+                  </span>
+                  <span className="text-[11px] font-bold text-yellow-300 flex items-center gap-1 bg-yellow-400/10 px-2 py-0.5 rounded-full border border-yellow-400/30">
+                    <Sparkles className="w-3 h-3 text-yellow-300" /> 1-Tap Voice &amp; Chat
+                  </span>
+                </div>
+
+                {/* Avatar Portrait with Glowing Gradient Frame */}
+                <div className="flex items-center gap-4 relative z-10">
+                  <div className="relative flex-shrink-0">
+                    {/* Pulsing glow ring around avatar */}
+                    <div className="absolute -inset-1 rounded-3xl bg-gradient-to-tr from-emerald-400 via-teal-300 to-indigo-500 opacity-75 blur-xs group-hover:opacity-100 transition-opacity animate-pulse" />
+                    <div className="relative w-24 h-24 sm:w-28 sm:h-28 rounded-2xl overflow-hidden border-2 border-white shadow-xl bg-slate-950">
+                      <img 
+                        src="/smart-avatar.jpg" 
+                        alt="Gemma AI Smart Concierge" 
+                        className="w-full h-full object-cover object-top group-hover:scale-105 transition-transform duration-500" 
+                      />
+                      {/* Active online badge */}
+                      <span className="absolute bottom-1 right-1 w-4 h-4 bg-emerald-400 border-2 border-slate-900 rounded-full shadow-xs" />
+                    </div>
+                  </div>
+
+                  <div className="min-w-0 flex-1 space-y-1">
+                    <div className="flex items-center gap-1.5">
+                      <h3 className="text-xl font-black text-white group-hover:text-emerald-300 transition-colors">Gemma</h3>
+                      <span className="text-[10px] bg-white/20 text-white font-bold px-2 py-0.5 rounded-full">v2.5</span>
+                    </div>
+                    <p className="text-xs font-semibold text-emerald-200">Your GoSmart Shopping Concierge</p>
+                    <p className="text-[11px] text-primary-100/90 leading-tight">
+                      Instant aisle guidance, recipe calculators, &amp; voice assistance.
+                    </p>
+                  </div>
+                </div>
+
+                {/* Speech Bubble Dialogue */}
+                <div className="mt-4 bg-white/15 dark:bg-slate-800/80 backdrop-blur-md rounded-2xl p-3.5 border border-white/20 shadow-inner relative z-10 space-y-2">
+                  <div className="text-xs text-slate-100 font-medium leading-relaxed flex items-start gap-2">
+                    <span className="text-base">👋</span>
+                    <span>
+                      "Hi there! Looking for shelf locations, Chef recipe kits, or instant cart addition? Tap me to start chatting!"
+                    </span>
+                  </div>
+
+                  {/* Quick Click Prompts */}
+                  <div className="flex flex-wrap gap-1.5 pt-1">
+                    {[
+                      { icon: '🥛', text: 'Where is Milk?' },
+                      { icon: '🍛', text: 'Paneer Recipe' },
+                      { icon: '🗺️', text: 'Aisle Map' }
+                    ].map((chip, idx) => (
+                      <button
+                        key={idx}
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          openAiAssistant?.();
+                        }}
+                        className="text-[11px] font-semibold bg-white/10 hover:bg-emerald-500/30 text-white px-2.5 py-1 rounded-lg border border-white/15 transition-colors flex items-center gap-1"
+                      >
+                        <span>{chip.icon}</span>
+                        <span>{chip.text}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* CTA Button */}
+                <div className="mt-4 relative z-10">
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      openAiAssistant?.();
+                    }}
+                    className="w-full py-2.5 px-4 bg-gradient-to-r from-emerald-400 via-teal-400 to-primary-500 hover:from-emerald-300 hover:to-primary-400 text-slate-950 font-black text-xs rounded-xl shadow-lg transition-all duration-200 flex items-center justify-center gap-2 group-hover:scale-[1.02] active:scale-98"
+                  >
+                    <Bot className="w-4 h-4 text-slate-950" />
+                    <span>Talk to Gemma (Voice &amp; Text Assistant)</span>
+                    <ArrowRight className="w-3.5 h-3.5 text-slate-950" />
+                  </button>
+                </div>
+
+              </div>
+            </div>
+
+          </div>
+        </div>
+      </section>
+
+      {/* Customer Avatar & Express Membership Welcome Bar */}
+      {currentUser && (
+        <section className="bg-white dark:bg-slate-900 rounded-3xl p-4 sm:p-5 border border-gray-100 dark:border-slate-800 shadow-xs flex flex-col md:flex-row items-center justify-between gap-4">
+          <div className="flex items-center gap-3.5 w-full md:w-auto">
+            <div className="relative flex-shrink-0">
+              <div className="w-12 h-12 rounded-2xl overflow-hidden border-2 border-primary-500 shadow-md ring-2 ring-primary-300/30 bg-primary-50 dark:bg-slate-800">
+                <img 
+                  src={currentUser.avatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=120&h=120&fit=crop&crop=face'} 
+                  alt={currentUser.name} 
+                  className="w-full h-full object-cover" 
+                />
+              </div>
+              <span className="absolute -bottom-1 -right-1 w-3.5 h-3.5 bg-emerald-500 border-2 border-white dark:border-slate-900 rounded-full shadow-xs" />
+            </div>
+
+            <div className="min-w-0 flex-1">
+              <div className="flex items-center gap-2">
+                <h2 className="text-sm sm:text-base font-extrabold text-gray-900 dark:text-white truncate">
+                  Welcome back, {currentUser.name}!
+                </h2>
+                <span className="bg-amber-100 dark:bg-amber-950 text-amber-800 dark:text-amber-300 text-[10px] font-black px-2 py-0.5 rounded-full border border-amber-200 dark:border-amber-800">
+                  VIP Shopper
+                </span>
+              </div>
+              <div className="flex items-center gap-3 text-xs text-gray-500 dark:text-gray-400 mt-0.5 flex-wrap">
+                <span className="flex items-center gap-1 font-bold text-primary-600 dark:text-primary-400">
+                  <span>🪙</span> {currentUser.loyaltyPoints || 100} Reward Coins
+                </span>
+                <span>•</span>
+                <span className="truncate max-w-[200px] sm:max-w-[280px]">
+                  📍 {currentUser.address}
+                </span>
+              </div>
             </div>
           </div>
 
-          <div className="inline-flex items-center gap-2 bg-white/20 backdrop-blur-md px-3.5 py-1 rounded-full text-xs font-black tracking-wider uppercase mb-6 border border-white/20">
-            <span className="w-2 h-2 rounded-full bg-yellow-300 animate-ping"></span>
-            Real-Time Smart Supermarket Platform
-          </div>
-
-          <h1 className="text-4xl md:text-5xl lg:text-6xl font-black mb-4 tracking-tight leading-tight">
-            Fresh Groceries Delivered in <span className="text-yellow-300 underline decoration-yellow-400 decoration-wavy decoration-2">15 Minutes</span>
-          </h1>
-          <p className="text-base md:text-lg text-primary-100 mb-8 max-w-2xl mx-auto font-medium">
-            Order online with live GPS delivery tracking, pick up from express store lockers, or enjoy queue-less in-store Scan & Go checkout.
-          </p>
-          
-          {/* Main Search Bar */}
-          <form onSubmit={handleSearch} className="max-w-2xl mx-auto relative mb-8">
-            <div className="relative flex items-center w-full h-14 rounded-2xl bg-white dark:bg-slate-900 overflow-hidden shadow-2xl focus-within:ring-4 focus-within:ring-yellow-300/50 transition-all border border-transparent dark:border-slate-700">
-              <div className="grid place-items-center h-full w-12 text-gray-400">
-                <Search className="h-5 w-5" />
-              </div>
-              <input
-                className="peer h-full w-full outline-none text-gray-800 dark:text-white text-base pr-4 bg-transparent font-medium"
-                type="text"
-                id="search"
-                placeholder={t('search_placeholder', 'Search fresh vegetables, groceries, dairy, drinks...')}
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-              />
-              <button type="submit" className="h-full px-6 bg-charcoal-900 dark:bg-primary-600 text-white font-bold text-sm hover:bg-black dark:hover:bg-primary-700 transition-colors flex items-center gap-1.5">
-                <span>Search</span>
-                <ArrowRight className="w-4 h-4" />
-              </button>
-            </div>
-          </form>
-          
-          {/* 3 Interactive Mode Quick Tiles */}
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 max-w-3xl mx-auto text-left">
+          <div className="flex items-center gap-2.5 w-full md:w-auto justify-end">
             <Link
-              to="/customer/products"
-              className="bg-white/10 hover:bg-white/20 backdrop-blur-md p-3.5 rounded-2xl border border-white/20 transition-all group flex items-center gap-3"
+              to="/customer/orders"
+              className="px-3.5 py-2 rounded-xl bg-gray-50 dark:bg-slate-800 hover:bg-gray-100 dark:hover:bg-slate-700 text-gray-700 dark:text-gray-200 text-xs font-bold transition-all border border-gray-200 dark:border-slate-700 flex items-center gap-1.5"
             >
-              <div className="bg-yellow-400 text-charcoal-900 p-2 rounded-xl group-hover:scale-110 transition-transform">
-                <Truck className="w-5 h-5" />
-              </div>
-              <div>
-                <div className="font-bold text-xs">🛵 15-Min Delivery</div>
-                <div className="text-[10px] text-primary-100">Live GPS tracking to door</div>
-              </div>
-            </Link>
-
-            <Link
-              to="/customer/list"
-              className="bg-white/10 hover:bg-white/20 backdrop-blur-md p-3.5 rounded-2xl border border-white/20 transition-all group flex items-center gap-3"
-            >
-              <div className="bg-orange-400 text-charcoal-900 p-2 rounded-xl group-hover:scale-110 transition-transform">
-                <Package className="w-5 h-5" />
-              </div>
-              <div>
-                <div className="font-bold text-xs">🛍️ Store Take Away</div>
-                <div className="text-[10px] text-primary-100">Express locker PIN pickup</div>
-              </div>
+              <Truck className="w-3.5 h-3.5 text-primary-600 dark:text-primary-400" />
+              <span>Track Orders ({orders ? orders.filter(o => !['DELIVERED', 'CANCELLED'].includes(o.status)).length : 0})</span>
             </Link>
 
             <Link
               to="/customer/scan"
-              className="bg-white/10 hover:bg-white/20 backdrop-blur-md p-3.5 rounded-2xl border border-white/20 transition-all group flex items-center gap-3"
+              className="px-3.5 py-2 rounded-xl bg-primary-600 hover:bg-primary-700 text-white text-xs font-bold shadow-xs transition-all flex items-center gap-1.5"
             >
-              <div className="bg-purple-400 text-charcoal-900 p-2 rounded-xl group-hover:scale-110 transition-transform">
-                <QrCode className="w-5 h-5" />
-              </div>
-              <div>
-                <div className="font-bold text-xs">⚡ In-Store Scan & Go</div>
-                <div className="text-[10px] text-primary-100">Skip all cashier queues</div>
-              </div>
+              <QrCode className="w-3.5 h-3.5" />
+              <span>Scan &amp; Go</span>
             </Link>
-          </div>
 
-        </div>
-      </section>
+            <button
+              type="button"
+              onClick={() => openAiAssistant?.()}
+              className="px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold shadow-xs transition-all flex items-center gap-1.5"
+            >
+              <Sparkles className="w-3.5 h-3.5" />
+              <span>Ask Gemma</span>
+            </button>
+          </div>
+        </section>
+      )}
 
 
       {/* Popular Categories */}

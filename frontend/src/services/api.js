@@ -207,3 +207,213 @@ export const apiVerifyRazorpaySignature = async (payload) => {
   }
 };
 
+/**
+ * Fetch All Delivery Partners
+ */
+export const apiFetchDeliveryPartners = async () => {
+  try {
+    const res = await customFetch(`${API_BASE_URL}/delivery/partners`);
+    if (!res.ok) throw new Error('Failed to fetch delivery partners');
+    return await res.json();
+  } catch (err) {
+    console.warn('Delivery partners fallback to local data:', err.message);
+    return null;
+  }
+};
+
+/**
+ * Manager Adds New Delivery Partner
+ */
+export const apiAddDeliveryPartner = async (partnerData, requesterRole = 'MANAGER') => {
+  try {
+    const res = await customFetch(`${API_BASE_URL}/delivery/partners`, {
+      method: 'POST',
+      headers: { 
+        'Content-Type': 'application/json',
+        'x-requester-role': requesterRole
+      },
+      body: JSON.stringify({ ...partnerData, requesterRole })
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Failed to add delivery partner');
+    }
+    return await res.json();
+  } catch (err) {
+    console.warn('apiAddDeliveryPartner note:', err.message);
+    throw err;
+  }
+};
+
+/**
+ * Update Delivery Partner Status
+ */
+export const apiUpdateDeliveryPartnerStatus = async (partnerId, status) => {
+  try {
+    const res = await customFetch(`${API_BASE_URL}/delivery/partners/${encodeURIComponent(partnerId)}/status`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ status })
+    });
+    if (!res.ok) throw new Error('Failed to update partner status');
+    return await res.json();
+  } catch (err) {
+    console.warn('apiUpdateDeliveryPartnerStatus note:', err.message);
+    return null;
+  }
+};
+
+/**
+ * Delete Delivery Partner (Manager Only)
+ */
+export const apiDeleteDeliveryPartner = async (partnerId, requesterRole = 'MANAGER') => {
+  try {
+    const res = await customFetch(`${API_BASE_URL}/delivery/partners/${encodeURIComponent(partnerId)}?requesterRole=${encodeURIComponent(requesterRole)}`, {
+      method: 'DELETE',
+      headers: { 
+        'Content-Type': 'application/json',
+        'x-requester-role': requesterRole
+      },
+      body: JSON.stringify({ requesterRole })
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Failed to delete delivery partner');
+    }
+    return await res.json();
+  } catch (err) {
+    console.warn('apiDeleteDeliveryPartner note:', err.message);
+    throw err;
+  }
+};
+
+/**
+ * Delivery Partner Login
+ */
+export const apiDeliveryLogin = async (identifier, password) => {
+  try {
+    const res = await customFetch(`${API_BASE_URL}/delivery/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ identifier, password })
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Delivery login failed');
+    }
+    return await res.json();
+  } catch (err) {
+    console.warn('apiDeliveryLogin note:', err.message);
+    throw err;
+  }
+};
+
+/**
+ * Fetch All Store Staff Members
+ */
+export const apiFetchStaffMembers = async () => {
+  try {
+    const res = await customFetch(`${API_BASE_URL}/staff`);
+    if (!res.ok) throw new Error('Failed to fetch staff members');
+    return await res.json();
+  } catch (err) {
+    console.warn('Staff members fallback to local store data:', err.message);
+    return null;
+  }
+};
+
+/**
+ * Manager Adds New Working Staff Member
+ */
+export const apiAddStaffMember = async (staffData, requesterRole = 'MANAGER') => {
+  try {
+    const res = await customFetch(`${API_BASE_URL}/staff`, {
+      method: 'POST',
+      headers: { 
+        'Content-Type': 'application/json',
+        'x-requester-role': requesterRole
+      },
+      body: JSON.stringify({ ...staffData, requesterRole })
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Failed to add staff member');
+    }
+    return await res.json();
+  } catch (err) {
+    console.warn('apiAddStaffMember note:', err.message);
+    throw err;
+  }
+};
+
+/**
+ * Manager Updates Staff Status (Active / On Leave / Inactive)
+ */
+export const apiUpdateStaffStatus = async (staffId, status, requesterRole = 'MANAGER') => {
+  try {
+    const res = await customFetch(`${API_BASE_URL}/staff/${encodeURIComponent(staffId)}/status`, {
+      method: 'PUT',
+      headers: { 
+        'Content-Type': 'application/json',
+        'x-requester-role': requesterRole
+      },
+      body: JSON.stringify({ status, requesterRole })
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Failed to update staff status');
+    }
+    return await res.json();
+  } catch (err) {
+    console.warn('apiUpdateStaffStatus note:', err.message);
+    throw err;
+  }
+};
+
+/**
+ * Manager Removes Staff Member
+ */
+export const apiDeleteStaffMember = async (staffId, requesterRole = 'MANAGER') => {
+  try {
+    const res = await customFetch(`${API_BASE_URL}/staff/${encodeURIComponent(staffId)}?requesterRole=${encodeURIComponent(requesterRole)}`, {
+      method: 'DELETE',
+      headers: { 
+        'Content-Type': 'application/json',
+        'x-requester-role': requesterRole
+      },
+      body: JSON.stringify({ requesterRole })
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Failed to delete staff member');
+    }
+    return await res.json();
+  } catch (err) {
+    console.warn('apiDeleteStaffMember note:', err.message);
+    throw err;
+  }
+};
+
+/**
+ * Staff / Manager Unified Login Verification
+ */
+export const apiStaffLogin = async (identifier, password, expectedRole = null) => {
+  try {
+    const res = await customFetch(`${API_BASE_URL}/staff/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ identifier, password, expectedRole })
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Login verification failed');
+    }
+    return await res.json();
+  } catch (err) {
+    console.warn('apiStaffLogin note:', err.message);
+    throw err;
+  }
+};
+
+
+

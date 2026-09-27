@@ -13,8 +13,9 @@ export default function StaffProtectedRoute() {
   const { isStaffAuthenticated } = useSupermarket();
 
   if (!isStaffAuthenticated) {
+    const fullPath = location.pathname + location.search;
     // Redirect securely to /staff/login and save original attempted location
-    return <Navigate to="/staff/login" replace state={{ from: location.pathname }} />;
+    return <Navigate to={`/staff/login?redirect=${encodeURIComponent(fullPath)}`} replace state={{ from: fullPath }} />;
   }
 
   return <Outlet />;

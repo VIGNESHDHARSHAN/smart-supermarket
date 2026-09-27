@@ -3,6 +3,30 @@
 class SoundEngine {
   constructor() {
     this.ctx = null;
+    this.voices = [];
+    this.activeUtterances = new Set();
+    this.keepAliveTimer = null;
+    this.initVoices();
+  }
+
+  initVoices() {
+    if (typeof window === 'undefined' || !('speechSynthesis' in window)) return;
+    
+    const loadVoices = () => {
+      try {
+        const v = window.speechSynthesis.getVoices();
+        if (v && v.length > 0) {
+          this.voices = v;
+        }
+      } catch (e) {
+        console.warn("Error getting voices:", e);
+      }
+    };
+
+    loadVoices();
+    if (window.speechSynthesis.onvoiceschanged !== undefined) {
+      window.speechSynthesis.onvoiceschanged = loadVoices;
+    }
   }
 
   init() {
@@ -243,62 +267,166 @@ class SoundEngine {
     }
   }
 
+  cleanTextForSpeech(text) {
+    if (!text) return '';
+    return text
+      // Replace markdown links with link text
+      .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
+      // Replace rupee symbol with "rupees " so voices pronounce prices naturally
+      .replace(/₹\s*(\d+(\.\d+)?)/g, '$1 rupees')
+      .replace(/₹/g, ' rupees ')
+      // Strip markdown formatting symbols
+      .replace(/[*_~`#]/g, ' ')
+      // Strip bullet points
+      .replace(/^[•\-\*]\s+/gm, '')
+      // Remove emojis that may distort speech synthesis
+      .replace(/[\u{1F300}-\u{1F9FF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}\u{1F1E0}-\u{1F1FF}]/gu, '')
+      // Condense multiple whitespaces
+      .replace(/\s+/g, ' ')
+      .trim();
+  }
+
+  findBestVoice(lang = 'en-US') {
+    let voices = this.voices;
+    if (!voices || voices.length === 0) {
+      if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
+        voices = window.speechSynthesis.getVoices() || [];
+        this.voices = voices;
+      }
+    }
+    if (!voices || voices.length === 0) return null;
+
+    const normalizedLang = (lang || 'en-US').toLowerCase();
+    const langPrefix = normalizedLang.split('-')[0];
+
+    // 1. Exact match (e.g., 'en-US', 'hi-IN', 'ta-IN', 'es-ES')
+    const exactMatches = voices.filter(v => v.lang && v.lang.toLowerCase() === normalizedLang);
+    // 2. Prefix match (e.g., 'en', 'hi', 'ta', 'es')
+    const prefixMatches = voices.filter(v => v.lang && v.lang.toLowerCase().startsWith(langPrefix));
+
+    const candidates = exactMatches.length > 0 ? exactMatches : prefixMatches;
+
+    if (candidates.length > 0) {
+      // Prefer natural, Google, Neural or expressive male/female voices
+      const preferred = candidates.find(v => {
+        const name = (v.name || '').toLowerCase();
+        return (
+          name.includes('natural') ||
+          name.includes('google') ||
+          name.includes('neural') ||
+          name.includes('online') ||
+          name.includes('premium') ||
+          name.includes('david') ||
+          name.includes('george') ||
+          name.includes('guy') ||
+          name.includes('samantha')
+        );
+      });
+      return preferred || candidates[0];
+    }
+
+    // 3. Fallback: Default voice or English voice to prevent "language-unavailable" crash
+    const defaultVoice = voices.find(v => v.default) ||
+                         voices.find(v => v.lang && v.lang.toLowerCase().startsWith('en')) ||
+                         voices[0];
+    return defaultVoice || null;
+  }
+
   speakText(text, lang = 'en-US', callbacks = {}) {
     try {
       if (typeof window === 'undefined' || !('speechSynthesis' in window)) {
         callbacks.onEnd?.();
         return;
       }
-      window.speechSynthesis.cancel(); // Stop any pending speech
-      
-      const cleanText = text.replace(/[*_~`#]/g, '').trim();
+
+      this.stopSpeaking();
+
+      const cleanText = this.cleanTextForSpeech(text);
       if (!cleanText) {
         callbacks.onEnd?.();
         return;
       }
 
-      const utterance = new SpeechSynthesisUtterance(cleanText);
-      utterance.lang = lang;
-      // Clear, natural assistant voice
-      utterance.rate = callbacks.rate !== undefined ? callbacks.rate : 1.0;
-      utterance.pitch = callbacks.pitch !== undefined ? callbacks.pitch : 1.0;
+      // Small async delay ensures previous cancel() is fully processed by Chromium
+      setTimeout(() => {
+        try {
+          if (typeof window === 'undefined' || !('speechSynthesis' in window)) return;
 
-      // Select best natural voice for AI Assistant if available
-      const voices = window.speechSynthesis.getVoices();
-      if (voices && voices.length > 0) {
-        const langPrefix = lang.split('-')[0].toLowerCase();
-        // Look for expressive male or natural voices
-        const preferredVoices = voices.filter(v => {
-          const name = v.name.toLowerCase();
-          const matchesLang = v.lang.toLowerCase().startsWith(langPrefix);
-          return matchesLang && (
-            name.includes('male') || 
-            name.includes('david') || 
-            name.includes('daniel') || 
-            name.includes('george') || 
-            name.includes('natural') || 
-            name.includes('guy') ||
-            name.includes('google uk english male')
-          );
-        });
+          // Resume if synthesis engine was left in paused state
+          if (window.speechSynthesis.paused) {
+            window.speechSynthesis.resume();
+          }
 
-        const match = preferredVoices[0] || 
-                      voices.find(v => v.lang.toLowerCase() === lang.toLowerCase()) || 
-                      voices.find(v => v.lang.toLowerCase().startsWith(langPrefix));
-        if (match) {
-          utterance.voice = match;
+          const utterance = new SpeechSynthesisUtterance(cleanText);
+          const bestVoice = this.findBestVoice(lang);
+
+          if (bestVoice) {
+            utterance.voice = bestVoice;
+            utterance.lang = bestVoice.lang || lang;
+          } else {
+            utterance.lang = lang;
+          }
+
+          utterance.rate = callbacks.rate !== undefined ? callbacks.rate : 1.0;
+          utterance.pitch = callbacks.pitch !== undefined ? callbacks.pitch : 1.0;
+
+          // Retain reference to avoid Chromium V8 Garbage Collection cutting off speech mid-sentence
+          this.activeUtterances.add(utterance);
+          window._activeSpeechUtterance = utterance;
+
+          const cleanup = () => {
+            this.activeUtterances.delete(utterance);
+            if (this.keepAliveTimer) {
+              clearInterval(this.keepAliveTimer);
+              this.keepAliveTimer = null;
+            }
+          };
+
+          utterance.onstart = (e) => {
+            // Keep-alive heartbeat interval to bypass Chrome 15-second pause bug
+            if (this.keepAliveTimer) clearInterval(this.keepAliveTimer);
+            this.keepAliveTimer = setInterval(() => {
+              if (window.speechSynthesis.speaking) {
+                window.speechSynthesis.pause();
+                window.speechSynthesis.resume();
+              } else {
+                clearInterval(this.keepAliveTimer);
+                this.keepAliveTimer = null;
+              }
+            }, 10000);
+
+            callbacks.onStart?.(e);
+          };
+
+          utterance.onboundary = (e) => {
+            callbacks.onBoundary?.(e);
+          };
+
+          utterance.onend = (e) => {
+            cleanup();
+            callbacks.onEnd?.(e);
+          };
+
+          utterance.onerror = (e) => {
+            console.warn("Speech synthesis utterance error:", e);
+            cleanup();
+            callbacks.onError?.(e);
+          };
+
+          this.currentUtterance = utterance;
+          window.speechSynthesis.speak(utterance);
+
+          // Workaround: In some Chromium versions, speak() leaves engine paused until explicitly resumed
+          if (window.speechSynthesis.paused) {
+            window.speechSynthesis.resume();
+          }
+        } catch (err) {
+          console.warn("Speech speak error:", err);
+          callbacks.onEnd?.();
         }
-      }
-
-      if (callbacks.onStart) utterance.onstart = callbacks.onStart;
-      if (callbacks.onBoundary) utterance.onboundary = callbacks.onBoundary;
-      if (callbacks.onEnd) utterance.onend = callbacks.onEnd;
-      if (callbacks.onError) utterance.onerror = callbacks.onError;
-
-      this.currentUtterance = utterance;
-      window.speechSynthesis.speak(utterance);
+      }, 50);
     } catch (e) {
-      console.warn("Speech synthesis error:", e);
+      console.warn("Speech synthesis outer error:", e);
       callbacks.onEnd?.();
     }
   }
@@ -309,8 +437,16 @@ class SoundEngine {
 
   stopSpeaking() {
     try {
+      if (this.keepAliveTimer) {
+        clearInterval(this.keepAliveTimer);
+        this.keepAliveTimer = null;
+      }
+      this.activeUtterances.clear();
       if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
         window.speechSynthesis.cancel();
+        if (window.speechSynthesis.paused) {
+          window.speechSynthesis.resume();
+        }
       }
     } catch (e) {
       console.warn("Speech cancel error:", e);

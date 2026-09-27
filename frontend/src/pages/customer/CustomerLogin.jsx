@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
+import { useNavigate, useLocation, Link } from 'react-router-dom';
 import { 
   Store, 
   ArrowLeft, 
@@ -16,7 +16,9 @@ import {
   Award,
   AlertCircle,
   Eye,
-  EyeOff
+  EyeOff,
+  Bike,
+  Users
 } from 'lucide-react';
 import { useSupermarket, DEMO_CUSTOMERS } from '../../context/SupermarketContext';
 import { Button } from '../../components/ui/Button';
@@ -26,7 +28,8 @@ import { apiGoogleLogin } from '../../services/api';
 
 export default function CustomerLogin() {
   const navigate = useNavigate();
-  const { loginCustomer, currentUser } = useSupermarket();
+  const location = useLocation();
+  const { loginCustomer, logoutCustomer, currentUser } = useSupermarket();
 
   // Mode: 'login' | 'signup'
   const [activeTab, setActiveTab] = useState('login');
@@ -52,7 +55,26 @@ export default function CustomerLogin() {
   const [successMessage, setSuccessMessage] = useState('');
 
   const googleBtnContainerRef = useRef(null);
-  const redirectPath = new URLSearchParams(window.location.search).get('redirect') || '/customer';
+
+  const searchParams = new URLSearchParams(location.search);
+  const isSwitchMode = searchParams.get('switch') === 'true';
+  const [isSwitching, setIsSwitching] = useState(isSwitchMode);
+
+  const rawRedirect = searchParams.get('redirect') || location.state?.from;
+  // Ensure we never redirect back to the login page itself to prevent navigation loops
+  const redirectPath = (rawRedirect && !rawRedirect.includes('/customer/login')) ? rawRedirect : '/customer';
+
+  // Clean back/destination navigation helper:
+  // If user navigated directly from the destination page, return via -1 to avoid duplicate history.
+  // Otherwise, cleanly replace the login view.
+  const navigateAfterAuth = (target) => {
+    const historyIdx = window.history.state?.idx;
+    if (historyIdx && historyIdx > 0 && location.state?.from === target) {
+      navigate(-1);
+    } else {
+      navigate(target, { replace: true });
+    }
+  };
 
   // Handle return redirect from accounts.google.com
   useEffect(() => {
@@ -65,7 +87,7 @@ export default function CustomerLogin() {
         } catch (e) {
           loginCustomer(googleUser);
         }
-        navigate(redirectPath);
+        navigateAfterAuth(redirectPath);
       }
     };
     handleGoogleRedirect();
@@ -85,7 +107,7 @@ export default function CustomerLogin() {
         } catch (e) {
           loginCustomer(googleUser);
         }
-        navigate(redirectPath);
+        navigateAfterAuth(redirectPath);
       },
       onError: (err) => {
         console.warn('Google One Tap note:', err);
@@ -127,7 +149,7 @@ export default function CustomerLogin() {
 
       loginCustomer(user);
       setLoading(false);
-      navigate(redirectPath);
+      navigateAfterAuth(redirectPath);
     }, 600);
   };
 
@@ -171,7 +193,7 @@ export default function CustomerLogin() {
       setSuccessMessage('Account created successfully! Welcome bonus +150 SmartPoints added 🎉');
 
       setTimeout(() => {
-        navigate(redirectPath);
+        navigateAfterAuth(redirectPath);
       }, 700);
     }, 600);
   };
@@ -201,7 +223,7 @@ export default function CustomerLogin() {
 
   const handleQuickLogin = (demoCustomer) => {
     loginCustomer(demoCustomer);
-    navigate(redirectPath);
+    navigateAfterAuth(redirectPath);
   };
 
   return (
@@ -209,18 +231,42 @@ export default function CustomerLogin() {
       
       {/* Top Navigation Links */}
       <div className="sm:mx-auto sm:w-full sm:max-w-md mb-4 flex items-center justify-between">
-        <Link
-          to="/customer"
-          className="inline-flex items-center text-sm font-medium text-gray-600 dark:text-gray-400 hover:text-primary-600 dark:hover:text-primary-400 transition-colors"
+        <button
+          type="button"
+          onClick={() => {
+            if (window.history.length > 1 && !document.referrer.includes('/customer/login')) {
+              navigate(-1);
+            } else {
+              navigate(redirectPath, { replace: true });
+            }
+          }}
+          className="inline-flex items-center text-sm font-medium text-gray-600 dark:text-gray-400 hover:text-primary-600 dark:hover:text-primary-400 transition-colors cursor-pointer"
         >
           <ArrowLeft className="w-4 h-4 mr-1" /> Return to Supermarket Store
-        </Link>
-        <Link
-          to="/staff/login"
-          className="inline-flex items-center text-xs font-semibold text-charcoal-800 dark:text-gray-200 bg-white dark:bg-slate-900 px-2.5 py-1 rounded-full border border-gray-200 dark:border-slate-800 hover:bg-gray-50 shadow-xs"
-        >
-          <ShieldCheck className="w-3.5 h-3.5 mr-1 text-primary-600 dark:text-primary-400" /> Staff Portal
-        </Link>
+        </button>
+        <div className="flex items-center gap-1.5 flex-wrap justify-end">
+          <Link
+            to="/delivery/login"
+            replace
+            className="inline-flex items-center text-xs font-semibold text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/40 px-2 py-0.5 rounded-full border border-amber-200 dark:border-amber-900/50 hover:bg-amber-100 shadow-xs"
+          >
+            <Bike className="w-3 h-3 mr-1 text-amber-600 dark:text-amber-400" /> Rider
+          </Link>
+          <Link
+            to="/staff/login"
+            replace
+            className="inline-flex items-center text-xs font-semibold text-blue-700 dark:text-blue-400 bg-blue-50 dark:bg-blue-950/40 px-2 py-0.5 rounded-full border border-blue-200 dark:border-blue-900/50 hover:bg-blue-100 shadow-xs"
+          >
+            <Users className="w-3 h-3 mr-1 text-blue-600 dark:text-blue-400" /> Staff
+          </Link>
+          <Link
+            to="/manager/login"
+            replace
+            className="inline-flex items-center text-xs font-bold text-amber-800 dark:text-amber-300 bg-amber-100/80 dark:bg-amber-950 px-2.5 py-0.5 rounded-full border border-amber-300 dark:border-amber-800 hover:bg-amber-200 shadow-xs"
+          >
+            <ShieldCheck className="w-3 h-3 mr-1 text-amber-600 dark:text-amber-400" /> Manager
+          </Link>
+        </div>
       </div>
 
       {/* Main Header */}
@@ -239,303 +285,375 @@ export default function CustomerLogin() {
       </div>
 
       <div className="mt-8 sm:mx-auto sm:w-full sm:max-w-md space-y-6">
-        
-        {/* Google SSO Button */}
-        <div className="bg-white dark:bg-slate-900 p-4 rounded-2xl border border-gray-200 dark:border-slate-800 shadow-sm">
-          <button
-            type="button"
-            onClick={handleGoogleLogin}
-            disabled={googleLoading}
-            className="w-full flex items-center justify-center gap-3 py-3 px-4 bg-white dark:bg-slate-800 hover:bg-gray-50 dark:hover:bg-slate-700 text-gray-700 dark:text-gray-200 font-semibold rounded-xl border border-gray-300 dark:border-slate-700 shadow-2xs hover:shadow-xs transition-all text-sm group"
-          >
-            <svg className="w-5 h-5 flex-shrink-0" viewBox="0 0 24 24">
-              <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" />
-              <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" />
-              <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z" />
-              <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z" />
-            </svg>
-            <span>{googleLoading ? 'Redirecting to accounts.google.com...' : 'Continue with Google Account'}</span>
-          </button>
-
-          {/* Client ID Configuration Prompt if not yet set in .env */}
-          {showClientIdPrompt && (
-            <form onSubmit={handleSaveAndGoToGoogle} className="mt-3 pt-3 border-t border-gray-100 dark:border-slate-800 space-y-2.5 animate-in fade-in duration-150">
-              <div className="text-xs text-gray-600 dark:text-gray-400">
-                Google requires a <strong>Google OAuth Client ID</strong> to navigate to <code className="text-primary-600 dark:text-primary-400">accounts.google.com</code>:
-              </div>
-              <input
-                type="text"
-                required
-                placeholder="Paste Client ID (e.g. 123...apps.googleusercontent.com)"
-                value={clientIdInput}
-                onChange={(e) => setClientIdInput(e.target.value)}
-                className="w-full px-3 py-2 text-xs font-mono bg-gray-50 dark:bg-slate-800 border border-gray-300 dark:border-slate-700 rounded-lg text-gray-900 dark:text-white focus:outline-hidden focus:border-primary-500"
+        {currentUser && currentUser.id !== 'cust_guest' && !isSwitching ? (
+          /* Active Customer Session Card */
+          <div className="bg-white dark:bg-slate-900 py-8 px-6 shadow-2xl rounded-3xl sm:px-10 space-y-6 border border-gray-100 dark:border-slate-800 text-center animate-in fade-in zoom-in-95 duration-150">
+            <div className="relative inline-block mx-auto">
+              <img
+                src={currentUser.avatar}
+                alt={currentUser.name}
+                className="w-20 h-20 rounded-full object-cover border-4 border-primary-100 dark:border-primary-950 shadow-md mx-auto"
               />
-              <div className="flex gap-2">
-                <button
-                  type="submit"
-                  className="flex-1 py-1.5 px-3 bg-primary-600 hover:bg-primary-500 text-white font-bold rounded-lg text-xs shadow-xs transition-colors"
-                >
-                  Navigate to accounts.google.com →
-                </button>
+              <span className="absolute bottom-0 right-0 w-5 h-5 rounded-full bg-emerald-500 border-2 border-white dark:border-slate-900 flex items-center justify-center">
+                <CheckCircle2 className="w-3.5 h-3.5 text-white" />
+              </span>
+            </div>
+
+            <div>
+              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-primary-50 dark:bg-primary-950/70 text-primary-800 dark:text-primary-300 border border-primary-200 dark:border-primary-900">
+                <Sparkles className="w-3.5 h-3.5 text-primary-600" />
+                Active Shopper Profile
+              </span>
+              <h3 className="mt-3 text-xl font-black text-gray-900 dark:text-white">
+                {currentUser.name}
+              </h3>
+              <p className="text-xs text-gray-500 dark:text-gray-400 font-mono mt-1">
+                {currentUser.email} • {currentUser.phone}
+              </p>
+              <div className="mt-2 inline-flex items-center gap-1 text-xs font-bold text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/50 px-2.5 py-1 rounded-full border border-amber-200 dark:border-amber-900">
+                <Award className="w-3.5 h-3.5" /> {currentUser.loyaltyPoints || 150} SmartPoints Available
+              </div>
+            </div>
+
+            <div className="space-y-3 pt-2">
+              <Button
+                type="button"
+                onClick={() => navigate(redirectPath, { replace: true })}
+                className="w-full h-12 text-base font-extrabold shadow-md shadow-primary-600/20"
+              >
+                Continue to Store →
+              </Button>
+
+              <button
+                type="button"
+                onClick={() => setIsSwitching(true)}
+                className="w-full py-2.5 px-4 rounded-xl border border-gray-200 dark:border-slate-700 hover:bg-gray-50 dark:hover:bg-slate-800 text-xs font-bold text-gray-700 dark:text-gray-300 transition-colors cursor-pointer"
+              >
+                Switch Account / Sign In with Another Profile
+              </button>
+
+              <button
+                type="button"
+                onClick={() => logoutCustomer()}
+                className="w-full py-2 px-4 text-xs font-semibold text-red-600 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-950/30 rounded-xl transition-colors cursor-pointer"
+              >
+                Sign Out
+              </button>
+            </div>
+          </div>
+        ) : (
+          <>
+            {isSwitching && currentUser && currentUser.id !== 'cust_guest' && (
+              <div className="flex items-center justify-between p-3 bg-primary-50 dark:bg-slate-900 rounded-2xl border border-primary-200 dark:border-slate-800">
+                <span className="text-xs font-bold text-gray-700 dark:text-gray-300">
+                  Switching account from <strong>{currentUser.name}</strong>
+                </span>
                 <button
                   type="button"
-                  onClick={() => setShowClientIdPrompt(false)}
-                  className="px-2.5 py-1.5 text-xs text-gray-500 hover:text-gray-700 dark:text-gray-400"
+                  onClick={() => setIsSwitching(false)}
+                  className="text-xs text-primary-600 hover:underline font-semibold"
                 >
                   Cancel
                 </button>
               </div>
-              <p className="text-[11px] text-gray-400">
-                You can also put it into <code className="font-mono text-gray-500">frontend/.env</code> as <code className="font-mono text-gray-500">VITE_GOOGLE_CLIENT_ID</code>.
-              </p>
-            </form>
-          )}
-        </div>
+            )}
 
-        {/* 1-Click Fast Demo Login Profiles */}
-        <div className="bg-gradient-to-br from-primary-50 to-emerald-50 dark:from-primary-950/40 dark:to-emerald-950/40 p-5 rounded-2xl border border-primary-200/80 dark:border-primary-900/60 shadow-sm">
-          <div className="flex items-center gap-1.5 mb-3 text-xs font-bold text-primary-800 dark:text-primary-300 uppercase tracking-wider">
-            <Sparkles className="w-4 h-4 text-primary-600 dark:text-primary-400" /> 1-Click Fast Demo Login
-          </div>
-          
-          <div className="space-y-2">
-            {DEMO_CUSTOMERS.map((cust) => (
+            {/* Google SSO Button */}
+            <div className="bg-white dark:bg-slate-900 p-4 rounded-2xl border border-gray-200 dark:border-slate-800 shadow-sm">
               <button
-                key={cust.id}
                 type="button"
-                onClick={() => handleQuickLogin(cust)}
-                className="w-full flex items-center justify-between p-3 bg-white dark:bg-slate-900 hover:bg-primary-50/80 dark:hover:bg-primary-950/70 rounded-xl border border-primary-100 dark:border-slate-800 hover:border-primary-300 shadow-2xs transition-all text-left group"
+                onClick={handleGoogleLogin}
+                disabled={googleLoading}
+                className="w-full flex items-center justify-center gap-3 py-3 px-4 bg-white dark:bg-slate-800 hover:bg-gray-50 dark:hover:bg-slate-700 text-gray-700 dark:text-gray-200 font-semibold rounded-xl border border-gray-300 dark:border-slate-700 shadow-2xs hover:shadow-xs transition-all text-sm group"
               >
-                <div className="flex items-center gap-3">
-                  <img src={cust.avatar} alt={cust.name} className="w-9 h-9 rounded-full object-cover border border-gray-200 dark:border-slate-700" />
-                  <div>
-                    <div className="font-bold text-sm text-gray-900 dark:text-white group-hover:text-primary-700 dark:group-hover:text-primary-300">{cust.name}</div>
-                    <div className="text-xs text-gray-500 dark:text-gray-400 truncate max-w-[210px]">{cust.address}</div>
-                  </div>
-                </div>
-                <div className="text-xs font-bold text-primary-600 dark:text-primary-400 bg-primary-50 dark:bg-primary-950 px-2.5 py-1 rounded-lg group-hover:bg-primary-600 group-hover:text-white transition-colors">
-                  Login →
-                </div>
+                <svg className="w-5 h-5 flex-shrink-0" viewBox="0 0 24 24">
+                  <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" />
+                  <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" />
+                  <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z" />
+                  <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z" />
+                </svg>
+                <span>{googleLoading ? 'Redirecting to accounts.google.com...' : 'Continue with Google Account'}</span>
               </button>
-            ))}
-          </div>
-        </div>
 
-        {/* Tab Selector: Sign In vs Create Account */}
-        <div className="bg-white dark:bg-slate-900 py-8 px-6 shadow-sm border border-gray-200 dark:border-slate-800 rounded-2xl space-y-6">
-          
-          <div className="grid grid-cols-2 p-1 bg-gray-100 dark:bg-slate-800 rounded-xl">
-            <button
-              type="button"
-              onClick={() => { setActiveTab('login'); setErrorMessage(''); setSuccessMessage(''); }}
-              className={`py-2.5 text-xs sm:text-sm font-bold rounded-lg transition-all flex items-center justify-center gap-2 ${
-                activeTab === 'login'
-                  ? 'bg-white dark:bg-slate-900 text-primary-700 dark:text-primary-400 shadow-sm'
-                  : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'
-              }`}
-            >
-              <LogIn className="w-4 h-4" /> Sign In
-            </button>
-
-            <button
-              type="button"
-              onClick={() => { setActiveTab('signup'); setErrorMessage(''); setSuccessMessage(''); }}
-              className={`py-2.5 text-xs sm:text-sm font-bold rounded-lg transition-all flex items-center justify-center gap-2 ${
-                activeTab === 'signup'
-                  ? 'bg-primary-600 text-white shadow-sm'
-                  : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'
-              }`}
-            >
-              <UserPlus className="w-4 h-4" /> Create Account
-            </button>
-          </div>
-
-          {/* Feedback Alerts */}
-          {errorMessage && (
-            <div className="p-3 bg-red-50 dark:bg-red-950/50 border border-red-200 dark:border-red-900 rounded-xl text-xs font-semibold text-red-700 dark:text-red-300 flex items-center gap-2">
-              <AlertCircle className="w-4 h-4 flex-shrink-0" />
-              <span>{errorMessage}</span>
+              {showClientIdPrompt && (
+                <form onSubmit={handleSaveAndGoToGoogle} className="mt-3 pt-3 border-t border-gray-100 dark:border-slate-800 space-y-2.5 animate-in fade-in duration-150">
+                  <div className="text-xs text-gray-600 dark:text-gray-400">
+                    Google requires a <strong>Google OAuth Client ID</strong> to navigate to <code className="text-primary-600 dark:text-primary-400">accounts.google.com</code>:
+                  </div>
+                  <input
+                    type="text"
+                    required
+                    placeholder="Paste Client ID (e.g. 123...apps.googleusercontent.com)"
+                    value={clientIdInput}
+                    onChange={(e) => setClientIdInput(e.target.value)}
+                    className="w-full px-3 py-2 text-xs font-mono bg-gray-50 dark:bg-slate-800 border border-gray-300 dark:border-slate-700 rounded-lg text-gray-900 dark:text-white focus:outline-hidden focus:border-primary-500"
+                  />
+                  <div className="flex gap-2">
+                    <button
+                      type="submit"
+                      className="flex-1 py-1.5 px-3 bg-primary-600 hover:bg-primary-500 text-white font-bold rounded-lg text-xs shadow-xs transition-colors"
+                    >
+                      Navigate to accounts.google.com →
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setShowClientIdPrompt(false)}
+                      className="px-2.5 py-1.5 text-xs text-gray-500 hover:text-gray-700 dark:text-gray-400"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                  <p className="text-[11px] text-gray-400">
+                    You can also put it into <code className="font-mono text-gray-500">frontend/.env</code> as <code className="font-mono text-gray-500">VITE_GOOGLE_CLIENT_ID</code>.
+                  </p>
+                </form>
+              )}
             </div>
-          )}
 
-          {successMessage && (
-            <div className="p-3 bg-emerald-50 dark:bg-emerald-950/50 border border-emerald-200 dark:border-emerald-900 rounded-xl text-xs font-semibold text-emerald-700 dark:text-emerald-300 flex items-center gap-2">
-              <CheckCircle2 className="w-4 h-4 flex-shrink-0" />
-              <span>{successMessage}</span>
+            {/* 1-Click Fast Demo Login Profiles */}
+            <div className="bg-gradient-to-br from-primary-50 to-emerald-50 dark:from-primary-950/40 dark:to-emerald-950/40 p-5 rounded-2xl border border-primary-200/80 dark:border-primary-900/60 shadow-sm">
+              <div className="flex items-center gap-1.5 mb-3 text-xs font-bold text-primary-800 dark:text-primary-300 uppercase tracking-wider">
+                <Sparkles className="w-4 h-4 text-primary-600 dark:text-primary-400" /> 1-Click Fast Demo Login
+              </div>
+              
+              <div className="space-y-2">
+                {DEMO_CUSTOMERS.map((cust) => (
+                  <button
+                    key={cust.id}
+                    type="button"
+                    onClick={() => handleQuickLogin(cust)}
+                    className="w-full flex items-center justify-between p-3 bg-white dark:bg-slate-900 hover:bg-primary-50/80 dark:hover:bg-primary-950/70 rounded-xl border border-primary-100 dark:border-slate-800 hover:border-primary-300 shadow-2xs transition-all text-left group"
+                  >
+                    <div className="flex items-center gap-3">
+                      <img src={cust.avatar} alt={cust.name} className="w-9 h-9 rounded-full object-cover border border-gray-200 dark:border-slate-700" />
+                      <div>
+                        <div className="font-bold text-sm text-gray-900 dark:text-white group-hover:text-primary-700 dark:group-hover:text-primary-300">{cust.name}</div>
+                        <div className="text-xs text-gray-500 dark:text-gray-400 truncate max-w-[210px]">{cust.address}</div>
+                      </div>
+                    </div>
+                    <div className="text-xs font-bold text-primary-600 dark:text-primary-400 bg-primary-50 dark:bg-primary-950 px-2.5 py-1 rounded-lg group-hover:bg-primary-600 group-hover:text-white transition-colors">
+                      Login →
+                    </div>
+                  </button>
+                ))}
+              </div>
             </div>
-          )}
 
-          {/* SIGN IN FORM */}
-          {activeTab === 'login' ? (
-            <form className="space-y-5" onSubmit={handleCustomLogin}>
-              <div>
-                <label htmlFor="identifier" className="block text-xs font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wider mb-1">
-                  Mobile Phone or Email
-                </label>
-                <Input
-                  id="identifier"
-                  name="identifier"
-                  type="text"
-                  required
-                  placeholder="e.g. 9845012345 or customer@gmail.com"
-                  value={identifier}
-                  onChange={(e) => setIdentifier(e.target.value)}
-                />
-              </div>
-
-              <div>
-                <div className="flex justify-between items-center mb-1">
-                  <label htmlFor="password" className="block text-xs font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wider">
-                    Password / OTP
-                  </label>
-                  <span className="text-[11px] text-gray-400">Demo password accepted</span>
-                </div>
-                <Input
-                  id="password"
-                  name="password"
-                  type="password"
-                  required
-                  placeholder="••••••••"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                />
-              </div>
-
-              <Button type="submit" className="w-full h-12 text-base font-extrabold shadow-md shadow-primary-600/20" disabled={loading}>
-                {loading ? 'Signing in...' : 'Sign In to Account'}
-              </Button>
-            </form>
-          ) : (
-            /* CREATE ACCOUNT FORM */
-            <form className="space-y-4" onSubmit={handleCreateAccount}>
-              <div className="bg-amber-50 dark:bg-amber-950/40 p-3 rounded-xl border border-amber-200 dark:border-amber-900 flex items-center gap-2 text-xs font-bold text-amber-800 dark:text-amber-300">
-                <Award className="w-4 h-4 text-yellow-500 fill-yellow-500 flex-shrink-0" />
-                <span>Sign up today & get +150 SmartPoints Welcome Reward!</span>
-              </div>
-
-              <div>
-                <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wider mb-1">
-                  Full Name *
-                </label>
-                <Input
-                  type="text"
-                  required
-                  placeholder="e.g. Rahul Sharma"
-                  value={fullName}
-                  onChange={(e) => setFullName(e.target.value)}
-                />
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wider mb-1">
-                    Email Address *
-                  </label>
-                  <Input
-                    type="email"
-                    required
-                    placeholder="rahul@example.com"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wider mb-1">
-                    Mobile Phone *
-                  </label>
-                  <Input
-                    type="tel"
-                    required
-                    placeholder="+91 98765 43210"
-                    value={phone}
-                    onChange={(e) => setPhone(e.target.value)}
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wider mb-1">
-                  Default Delivery Address
-                </label>
-                <Input
-                  type="text"
-                  placeholder="House No, Street Name, Area, City"
-                  value={address}
-                  onChange={(e) => setAddress(e.target.value)}
-                />
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wider mb-1">
-                    Password *
-                  </label>
-                  <Input
-                    type={showPassword ? 'text' : 'password'}
-                    required
-                    placeholder="••••••••"
-                    value={signupPassword}
-                    onChange={(e) => setSignupPassword(e.target.value)}
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wider mb-1">
-                    Confirm Password *
-                  </label>
-                  <Input
-                    type={showPassword ? 'text' : 'password'}
-                    required
-                    placeholder="••••••••"
-                    value={confirmPassword}
-                    onChange={(e) => setConfirmPassword(e.target.value)}
-                  />
-                </div>
-              </div>
-
-              <div className="flex items-center justify-between text-xs pt-1">
+            {/* Tab Selector: Sign In vs Create Account */}
+            <div className="bg-white dark:bg-slate-900 py-8 px-6 shadow-sm border border-gray-200 dark:border-slate-800 rounded-2xl space-y-6">
+              
+              <div className="grid grid-cols-2 p-1 bg-gray-100 dark:bg-slate-800 rounded-xl">
                 <button
                   type="button"
-                  onClick={() => setShowPassword(!showPassword)}
-                  className="text-gray-500 hover:text-gray-800 dark:hover:text-gray-200 flex items-center gap-1"
+                  onClick={() => { setActiveTab('login'); setErrorMessage(''); setSuccessMessage(''); }}
+                  className={`py-2.5 text-xs sm:text-sm font-bold rounded-lg transition-all flex items-center justify-center gap-2 ${
+                    activeTab === 'login'
+                      ? 'bg-white dark:bg-slate-900 text-primary-700 dark:text-primary-400 shadow-sm'
+                      : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'
+                  }`}
                 >
-                  {showPassword ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
-                  <span>{showPassword ? 'Hide Passwords' : 'Show Passwords'}</span>
+                  <LogIn className="w-4 h-4" /> Sign In
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => { setActiveTab('signup'); setErrorMessage(''); setSuccessMessage(''); }}
+                  className={`py-2.5 text-xs sm:text-sm font-bold rounded-lg transition-all flex items-center justify-center gap-2 ${
+                    activeTab === 'signup'
+                      ? 'bg-primary-600 text-white shadow-sm'
+                      : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'
+                  }`}
+                >
+                  <UserPlus className="w-4 h-4" /> Create Account
                 </button>
               </div>
 
-              <Button type="submit" className="w-full h-12 text-base font-extrabold shadow-md shadow-primary-600/20" disabled={loading}>
-                {loading ? 'Creating Account...' : 'Create Account & Get 150 SmartPoints'}
-              </Button>
-            </form>
-          )}
+              {/* Feedback Alerts */}
+              {errorMessage && (
+                <div className="p-3 bg-red-50 dark:bg-red-950/50 border border-red-200 dark:border-red-900 rounded-xl text-xs font-semibold text-red-700 dark:text-red-300 flex items-center gap-2">
+                  <AlertCircle className="w-4 h-4 flex-shrink-0" />
+                  <span>{errorMessage}</span>
+                </div>
+              )}
 
-          {/* Guest Direct Access */}
-          <div className="mt-6 pt-6 border-t border-gray-100 dark:border-slate-800">
-            <button
-              type="button"
-              onClick={() => {
-                loginCustomer({
-                  id: 'cust_guest',
-                  name: 'Guest Shopper',
-                  email: 'guest@smartmart.com',
-                  phone: '+91 99999 00000',
-                  avatar: '',
-                  address: 'Store Customer - Local Area',
-                  loyaltyPoints: 0,
-                  savedAddresses: []
-                });
-                navigate('/customer');
-              }}
-              className="w-full py-2.5 text-center text-sm font-semibold text-gray-700 dark:text-gray-300 bg-gray-50 dark:bg-slate-800 hover:bg-gray-100 dark:hover:bg-slate-700 rounded-xl border border-gray-200 dark:border-slate-700 transition-colors"
-            >
-              Continue as Guest Shopper (Browse Only)
-            </button>
-          </div>
-        </div>
+              {successMessage && (
+                <div className="p-3 bg-emerald-50 dark:bg-emerald-950/50 border border-emerald-200 dark:border-emerald-900 rounded-xl text-xs font-semibold text-emerald-700 dark:text-emerald-300 flex items-center gap-2">
+                  <CheckCircle2 className="w-4 h-4 flex-shrink-0" />
+                  <span>{successMessage}</span>
+                </div>
+              )}
 
+              {/* SIGN IN FORM */}
+              {activeTab === 'login' ? (
+                <form className="space-y-5" onSubmit={handleCustomLogin}>
+                  <div>
+                    <label htmlFor="identifier" className="block text-xs font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wider mb-1">
+                      Mobile Phone or Email
+                    </label>
+                    <Input
+                      id="identifier"
+                      name="identifier"
+                      type="text"
+                      required
+                      placeholder="e.g. 9845012345 or customer@gmail.com"
+                      value={identifier}
+                      onChange={(e) => setIdentifier(e.target.value)}
+                    />
+                  </div>
+
+                  <div>
+                    <div className="flex justify-between items-center mb-1">
+                      <label htmlFor="password" className="block text-xs font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wider">
+                        Password / OTP
+                      </label>
+                      <span className="text-[11px] text-gray-400">Demo password accepted</span>
+                    </div>
+                    <Input
+                      id="password"
+                      name="password"
+                      type="password"
+                      required
+                      placeholder="••••••••"
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                    />
+                  </div>
+
+                  <Button type="submit" className="w-full h-12 text-base font-extrabold shadow-md shadow-primary-600/20" disabled={loading}>
+                    {loading ? 'Signing in...' : 'Sign In to Account'}
+                  </Button>
+                </form>
+              ) : (
+                /* CREATE ACCOUNT FORM */
+                <form className="space-y-4" onSubmit={handleSignup}>
+                  <div className="bg-amber-50 dark:bg-amber-950/40 p-3 rounded-xl border border-amber-200 dark:border-amber-900 flex items-center gap-2 text-xs font-bold text-amber-800 dark:text-amber-300">
+                    <Award className="w-4 h-4 text-yellow-500 fill-yellow-500 flex-shrink-0" />
+                    <span>Sign up today & get +150 SmartPoints Welcome Reward!</span>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wider mb-1">
+                      Full Name *
+                    </label>
+                    <Input
+                      type="text"
+                      required
+                      placeholder="e.g. Rahul Sharma"
+                      value={fullName}
+                      onChange={(e) => setFullName(e.target.value)}
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wider mb-1">
+                        Email Address *
+                      </label>
+                      <Input
+                        type="email"
+                        required
+                        placeholder="rahul@example.com"
+                        value={email}
+                        onChange={(e) => setEmail(e.target.value)}
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wider mb-1">
+                        Mobile Phone *
+                      </label>
+                      <Input
+                        type="tel"
+                        required
+                        placeholder="+91 98765 43210"
+                        value={phone}
+                        onChange={(e) => setPhone(e.target.value)}
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wider mb-1">
+                      Default Delivery Address
+                    </label>
+                    <Input
+                      type="text"
+                      placeholder="House No, Street Name, Area, City"
+                      value={address}
+                      onChange={(e) => setAddress(e.target.value)}
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wider mb-1">
+                        Password *
+                      </label>
+                      <Input
+                        type={showPassword ? 'text' : 'password'}
+                        required
+                        placeholder="••••••••"
+                        value={signupPassword}
+                        onChange={(e) => setSignupPassword(e.target.value)}
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wider mb-1">
+                        Confirm Password *
+                      </label>
+                      <Input
+                        type={showPassword ? 'text' : 'password'}
+                        required
+                        placeholder="••••••••"
+                        value={confirmPassword}
+                        onChange={(e) => setConfirmPassword(e.target.value)}
+                      />
+                    </div>
+                  </div>
+
+                  <div className="flex items-center justify-between text-xs pt-1">
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword(!showPassword)}
+                      className="text-gray-500 hover:text-gray-800 dark:hover:text-gray-200 flex items-center gap-1"
+                    >
+                      {showPassword ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                      <span>{showPassword ? 'Hide Passwords' : 'Show Passwords'}</span>
+                    </button>
+                  </div>
+
+                  <Button type="submit" className="w-full h-12 text-base font-extrabold shadow-md shadow-primary-600/20" disabled={loading}>
+                    {loading ? 'Creating Account...' : 'Create Account & Get 150 SmartPoints'}
+                  </Button>
+                </form>
+              )}
+
+              {/* Guest Direct Access */}
+              <div className="mt-6 pt-6 border-t border-gray-100 dark:border-slate-800">
+                <button
+                  type="button"
+                  onClick={() => {
+                    loginCustomer({
+                      id: 'cust_guest',
+                      name: 'Guest Shopper',
+                      email: 'guest@smartmart.com',
+                      phone: '+91 99999 00000',
+                      avatar: '',
+                      address: 'Store Customer - Local Area',
+                      loyaltyPoints: 0,
+                      savedAddresses: []
+                    });
+                    navigateAfterAuth(redirectPath);
+                  }}
+                  className="w-full py-2.5 text-center text-sm font-semibold text-gray-700 dark:text-gray-300 bg-gray-50 dark:bg-slate-800 hover:bg-gray-100 dark:hover:bg-slate-700 rounded-xl border border-gray-200 dark:border-slate-700 transition-colors"
+                >
+                  Continue as Guest Shopper (Browse Only)
+                </button>
+              </div>
+            </div>
+          </>
+        )}
       </div>
     </div>
   );

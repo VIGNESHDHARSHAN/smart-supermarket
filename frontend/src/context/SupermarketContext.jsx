@@ -1,7 +1,20 @@
 import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
 import { initialProducts, initialSales, initialTransactions, popularRecipes } from '../data/mockData';
 import { soundEffects } from '../lib/audio';
-import { apiFetchProducts, apiCreateOrder, apiAddProduct, apiUpdateProductStock } from '../services/api';
+import { 
+  apiFetchProducts, 
+  apiCreateOrder, 
+  apiAddProduct, 
+  apiUpdateProductStock,
+  apiFetchDeliveryPartners,
+  apiAddDeliveryPartner,
+  apiUpdateDeliveryPartnerStatus,
+  apiDeleteDeliveryPartner,
+  apiFetchStaffMembers,
+  apiAddStaffMember,
+  apiUpdateStaffStatus,
+  apiDeleteStaffMember
+} from '../services/api';
 import { getCategoryFallbackImage, getCuratedProductImage } from '../services/imageService';
 import { checkStoreOpenStatus } from '../lib/storeHours';
 
@@ -44,6 +57,109 @@ export const DEFAULT_GUEST_USER = {
 
 export const DEMO_CUSTOMERS = [DEFAULT_GUEST_USER];
 
+export const DEFAULT_DELIVERY_PARTNERS = [
+  {
+    id: 'DLV_001',
+    name: 'Rajesh Kumar',
+    email: 'rajesh@smartmart.com',
+    phone: '+91 98765 43210',
+    password: '1234',
+    vehicleType: 'Electric Scooter',
+    vehicleNo: 'KA 05 MN 4821',
+    shift: 'Morning (07:00 - 15:00)',
+    status: 'AVAILABLE',
+    rating: 4.9,
+    completedTrips: 142,
+    activeOrders: 0,
+    avatar: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=120&h=120&fit=crop&crop=face'
+  },
+  {
+    id: 'DLV_002',
+    name: 'Vikram Singh',
+    email: 'vikram@smartmart.com',
+    phone: '+91 98450 11223',
+    password: '1234',
+    vehicleType: 'Motorcycle',
+    vehicleNo: 'KA 01 EK 9024',
+    shift: 'Afternoon (14:00 - 22:00)',
+    status: 'AVAILABLE',
+    rating: 4.85,
+    completedTrips: 98,
+    activeOrders: 0,
+    avatar: 'https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?w=120&h=120&fit=crop&crop=face'
+  },
+  {
+    id: 'DLV_003',
+    name: 'Sunita Rao',
+    email: 'sunita@smartmart.com',
+    phone: '+91 97410 55667',
+    password: '1234',
+    vehicleType: 'Electric Scooter',
+    vehicleNo: 'KA 03 GH 1129',
+    shift: 'Full Day (09:00 - 18:00)',
+    status: 'AVAILABLE',
+    rating: 4.95,
+    completedTrips: 175,
+    activeOrders: 0,
+    avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=120&h=120&fit=crop&crop=face'
+  }
+];
+
+export const DEFAULT_STAFF_MEMBERS = [
+  {
+    id: 'MGR_001',
+    name: 'Rohan Mehra',
+    email: 'manager@smartmart.com',
+    phone: '+91 98800 11223',
+    password: 'manager123',
+    role: 'MANAGER',
+    designation: 'Store General Manager',
+    department: 'Store Operations & Administration',
+    shift: 'General (09:00 - 19:00)',
+    status: 'ACTIVE',
+    avatar: 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=120&h=120&fit=crop&crop=face'
+  },
+  {
+    id: 'STF_001',
+    name: 'Priya Sundaram',
+    email: 'priya.cashier@smartmart.com',
+    phone: '+91 98451 22334',
+    password: 'staff123',
+    role: 'STAFF',
+    designation: 'Senior Cashier & POS Operator',
+    department: 'Billing & Front Counter',
+    shift: 'Morning (07:00 - 15:00)',
+    status: 'ACTIVE',
+    avatar: 'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=120&h=120&fit=crop&crop=face'
+  },
+  {
+    id: 'STF_002',
+    name: 'Arun Verma',
+    email: 'arun.inventory@smartmart.com',
+    phone: '+91 97412 88990',
+    password: 'staff123',
+    role: 'STAFF',
+    designation: 'Inventory & Stock Supervisor',
+    department: 'Warehouse & Aisles',
+    shift: 'Afternoon (14:00 - 22:00)',
+    status: 'ACTIVE',
+    avatar: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=120&h=120&fit=crop&crop=face'
+  },
+  {
+    id: 'STF_003',
+    name: 'Kavita Nair',
+    email: 'kavita.floor@smartmart.com',
+    phone: '+91 99001 44556',
+    password: 'staff123',
+    role: 'STAFF',
+    designation: 'Floor Associate & Customer Assist',
+    department: 'Customer Experience',
+    shift: 'Full Day (09:00 - 18:00)',
+    status: 'ACTIVE',
+    avatar: 'https://images.unsplash.com/photo-1580489944761-15a19d654956?w=120&h=120&fit=crop&crop=face'
+  }
+];
+
 const INITIAL_ORDERS = [];
 
 const SM_CATALOG_VERSION = 'v4_authentic_proper_images';
@@ -57,6 +173,10 @@ export const SupermarketProvider = ({ children }) => {
 
   // Real-time Store Open/Closed Status for customer purchases
   const [storeStatus, setStoreStatus] = useState(() => checkStoreOpenStatus(storeSettings));
+  // Global AI Chatbot Modal state
+  const [aiModalOpen, setAiModalOpen] = useState(false);
+  const openAiAssistant = () => setAiModalOpen(true);
+  const closeAiAssistant = () => setAiModalOpen(false);
 
   useEffect(() => {
     const refreshStatus = () => {
@@ -151,8 +271,72 @@ export const SupermarketProvider = ({ children }) => {
   // Staff Auth State
   const [currentStaff, setCurrentStaff] = useState(() => {
     const saved = localStorage.getItem('sm_staff_session');
-    return saved ? JSON.parse(saved) : null;
+    if (!saved) return null;
+    try {
+      const parsed = JSON.parse(saved);
+      if (parsed && parsed.id && (parsed.role === 'Supermarket Operator' || parsed.role === 'MANAGER' || parsed.role === 'STAFF' || parsed.role === 'ADMIN' || parsed.role === 'Store Staff')) {
+        return parsed;
+      }
+    } catch (e) {}
+    return null;
   });
+
+  // Delivery Partner Auth State (Dedicated login for delivery executives)
+  const [currentDeliveryPartner, setCurrentDeliveryPartner] = useState(() => {
+    const saved = localStorage.getItem('sm_delivery_session');
+    if (!saved) return null;
+    try {
+      const parsed = JSON.parse(saved);
+      if (parsed && parsed.id) return parsed;
+    } catch (e) {}
+    return null;
+  });
+
+  // Delivery Fleet Partners (Live manager-managed delivery personnel)
+  const [deliveryPartners, setDeliveryPartners] = useState(() => {
+    const saved = localStorage.getItem('sm_delivery_partners');
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      } catch (e) {}
+    }
+    return DEFAULT_DELIVERY_PARTNERS;
+  });
+
+  // Working Store Staff & Managers (Managed strictly by Store Manager)
+  const [staffMembers, setStaffMembers] = useState(() => {
+    const saved = localStorage.getItem('sm_staff_members');
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      } catch (e) {}
+    }
+    return DEFAULT_STAFF_MEMBERS;
+  });
+
+  // Sync delivery partners with backend API on mount
+  useEffect(() => {
+    const syncDeliveryPartners = async () => {
+      const backendPartners = await apiFetchDeliveryPartners();
+      if (backendPartners && backendPartners.length > 0) {
+        setDeliveryPartners(backendPartners);
+      }
+    };
+    syncDeliveryPartners();
+  }, []);
+
+  // Sync staff members with backend API on mount
+  useEffect(() => {
+    const syncStaffMembers = async () => {
+      const backendStaff = await apiFetchStaffMembers();
+      if (backendStaff && backendStaff.length > 0) {
+        setStaffMembers(backendStaff);
+      }
+    };
+    syncStaffMembers();
+  }, []);
 
   // Online Orders (Delivery, Take Away, Scan & Go)
   const [orders, setOrders] = useState(() => {
@@ -187,12 +371,32 @@ export const SupermarketProvider = ({ children }) => {
   }, [shoppingList]);
 
   useEffect(() => {
-    localStorage.setItem('sm_current_user', JSON.stringify(currentUser));
+    if (currentUser) {
+      localStorage.setItem('sm_current_user', JSON.stringify(currentUser));
+    } else {
+      localStorage.removeItem('sm_current_user');
+    }
   }, [currentUser]);
 
   useEffect(() => {
     localStorage.setItem('sm_orders', JSON.stringify(orders));
   }, [orders]);
+
+  useEffect(() => {
+    localStorage.setItem('sm_delivery_partners', JSON.stringify(deliveryPartners));
+  }, [deliveryPartners]);
+
+  useEffect(() => {
+    localStorage.setItem('sm_staff_members', JSON.stringify(staffMembers));
+  }, [staffMembers]);
+
+  useEffect(() => {
+    if (currentDeliveryPartner) {
+      localStorage.setItem('sm_delivery_session', JSON.stringify(currentDeliveryPartner));
+    } else {
+      localStorage.removeItem('sm_delivery_session');
+    }
+  }, [currentDeliveryPartner]);
 
   // Real-Time Background Simulation Loop
   useEffect(() => {
@@ -291,13 +495,27 @@ export const SupermarketProvider = ({ children }) => {
     }
   };
 
+  // Manager Role Privilege Evaluator
+  const isManager = Boolean(
+    currentStaff && 
+    (currentStaff.role === 'MANAGER' || 
+     currentStaff.role === 'ADMIN' || 
+     currentStaff.role === 'Store Manager' || 
+     currentStaff.designation?.toLowerCase().includes('manager'))
+  );
+
   // Staff Authorization Functions
   const loginStaff = (staffData = {}) => {
+    const isMgr = staffData.role === 'MANAGER' || staffData.role === 'ADMIN' || staffData.role === 'Store Manager';
     const session = {
-      id: staffData.id || 'STAFF_001',
-      name: staffData.name || 'Admin Manager',
-      email: staffData.email || 'admin@smartmart.com',
-      role: staffData.role || 'Supermarket Operator',
+      id: staffData.id || (isMgr ? 'MGR_001' : 'STF_001'),
+      name: staffData.name || (isMgr ? 'Rohan Mehra' : 'Store Associate'),
+      email: staffData.email || (isMgr ? 'manager@smartmart.com' : 'staff@smartmart.com'),
+      phone: staffData.phone || '+91 98800 11223',
+      role: isMgr ? 'MANAGER' : 'STAFF',
+      designation: staffData.designation || (isMgr ? 'Store General Manager' : 'Store Associate & Cashier'),
+      department: staffData.department || (isMgr ? 'Store Operations & Administration' : 'Billing & Store Floor'),
+      shift: staffData.shift || 'General Shift',
       centerName: storeSettings?.storeName || 'SmartMart Express Supermarket',
       centerCode: 'BLR-IND-102',
       loginTime: new Date().toISOString()
@@ -312,6 +530,144 @@ export const SupermarketProvider = ({ children }) => {
     setCurrentStaff(null);
     localStorage.removeItem('sm_staff_session');
     soundEffects.playNotificationPing();
+  };
+
+  // Staff Team Management Functions (Manager Exclusive)
+  const addStaffMember = async (staffData) => {
+    if (!isManager) {
+      throw new Error('Permission denied: Only Store Manager can onboard new working staff.');
+    }
+    const newId = (staffData.role === 'MANAGER' ? 'MGR_' : 'STF_') + Date.now().toString().slice(-6);
+    const newStaff = {
+      id: newId,
+      name: staffData.name.trim(),
+      email: staffData.email.trim().toLowerCase(),
+      phone: staffData.phone.trim(),
+      password: (staffData.password || 'staff123').trim(),
+      role: staffData.role === 'MANAGER' ? 'MANAGER' : 'STAFF',
+      designation: staffData.designation ? staffData.designation.trim() : (staffData.role === 'MANAGER' ? 'Assistant Store Manager' : 'Store Associate & Cashier'),
+      department: staffData.department ? staffData.department.trim() : 'Store Floor & Billing',
+      shift: staffData.shift || 'Morning (07:00 - 15:00)',
+      status: 'ACTIVE',
+      avatar: staffData.avatar || `https://api.dicebear.com/7.x/personas/svg?seed=${encodeURIComponent(staffData.name)}`
+    };
+
+    setStaffMembers(prev => [newStaff, ...prev]);
+    try {
+      await apiAddStaffMember(newStaff, currentStaff?.role || 'MANAGER');
+    } catch (e) {
+      console.warn('Backend sync note on addStaffMember:', e.message);
+    }
+    logActivity('STAFF', 'New Staff Member Onboarded', `${newStaff.name} • ${newStaff.designation}`);
+    soundEffects.playSuccessChime();
+    return newStaff;
+  };
+
+  const updateStaffStatus = async (staffId, status) => {
+    if (!isManager) {
+      throw new Error('Permission denied: Only Store Manager can modify staff status.');
+    }
+    setStaffMembers(prev => prev.map(s => (s.id === staffId || s._id === staffId) ? { ...s, status } : s));
+    try {
+      await apiUpdateStaffStatus(staffId, status, currentStaff?.role || 'MANAGER');
+    } catch (e) {
+      console.warn('Backend sync note on updateStaffStatus:', e.message);
+    }
+    soundEffects.playNotificationPing();
+  };
+
+  const deleteStaffMember = async (staffId) => {
+    if (!isManager) {
+      throw new Error('Permission denied: Only Store Manager can remove staff members.');
+    }
+    setStaffMembers(prev => prev.filter(s => s.id !== staffId && s._id !== staffId));
+    try {
+      await apiDeleteStaffMember(staffId, currentStaff?.role || 'MANAGER');
+    } catch (e) {
+      console.warn('Backend sync note on deleteStaffMember:', e.message);
+    }
+    soundEffects.playNotificationPing();
+  };
+
+  // Delivery Partner Auth Functions
+  const loginDeliveryPartner = (partnerData) => {
+    setCurrentDeliveryPartner(partnerData);
+    localStorage.setItem('sm_delivery_session', JSON.stringify(partnerData));
+    soundEffects.playSuccessChime();
+    return partnerData;
+  };
+
+  const logoutDeliveryPartner = () => {
+    setCurrentDeliveryPartner(null);
+    localStorage.removeItem('sm_delivery_session');
+    soundEffects.playNotificationPing();
+  };
+
+  // Delivery Fleet Management Functions (Manager Exclusive)
+  const addDeliveryPartner = async (partnerData) => {
+    if (!isManager) {
+      throw new Error('Permission denied: Only Store Manager can onboard new delivery partners.');
+    }
+    const newId = 'DLV_' + Date.now().toString().slice(-6);
+    const newPartner = {
+      id: newId,
+      name: partnerData.name.trim(),
+      email: (partnerData.email || `${partnerData.phone.replace(/\D/g, '')}@smartmart.com`).toLowerCase().trim(),
+      phone: partnerData.phone.trim(),
+      password: String(partnerData.password || '1234').trim(),
+      vehicleType: partnerData.vehicleType || 'Electric Scooter',
+      vehicleNo: (partnerData.vehicleNo || 'KA 01 AB 1234').trim().toUpperCase(),
+      shift: partnerData.shift || 'Standard (08:00 - 18:00)',
+      status: 'AVAILABLE',
+      rating: 5.0,
+      completedTrips: 0,
+      activeOrders: 0,
+      avatar: `https://api.dicebear.com/7.x/personas/svg?seed=${encodeURIComponent(partnerData.name)}`
+    };
+
+    setDeliveryPartners(prev => [newPartner, ...prev]);
+    try {
+      await apiAddDeliveryPartner(newPartner, currentStaff?.role || 'MANAGER');
+    } catch (e) {
+      console.warn('Backend sync note on addDeliveryPartner:', e.message);
+    }
+    logActivity('DELIVERY', 'New Delivery Partner Added', `${newPartner.name} • ${newPartner.vehicleNo}`);
+    soundEffects.playSuccessChime();
+    return newPartner;
+  };
+
+  const updateDeliveryPartnerStatus = (partnerId, status) => {
+    setDeliveryPartners(prev => prev.map(p => p.id === partnerId ? { ...p, status } : p));
+    apiUpdateDeliveryPartnerStatus(partnerId, status).catch(() => {});
+    soundEffects.playNotificationPing();
+  };
+
+  const deleteDeliveryPartner = async (partnerId) => {
+    if (!isManager) {
+      throw new Error('Permission denied: Only Store Manager can remove delivery partners.');
+    }
+    setDeliveryPartners(prev => prev.filter(p => p.id !== partnerId));
+    try {
+      await apiDeleteDeliveryPartner(partnerId, currentStaff?.role || 'MANAGER');
+    } catch (e) {
+      console.warn('Backend sync note on deleteDeliveryPartner:', e.message);
+    }
+    soundEffects.playNotificationPing();
+  };
+
+  const freeUpRider = (riderId) => {
+    if (!riderId) return;
+    setDeliveryPartners(prev => prev.map(p => {
+      if (p.id === riderId) {
+        return {
+          ...p,
+          status: 'AVAILABLE',
+          activeOrders: Math.max(0, (p.activeOrders || 1) - 1),
+          completedTrips: (p.completedTrips || 0) + 1
+        };
+      }
+      return p;
+    }));
   };
 
   // Cart & Shopping List Functions
@@ -369,6 +725,51 @@ export const SupermarketProvider = ({ children }) => {
     const orderId = 'ORD-' + Math.floor(10000 + Math.random() * 90000);
     const date = new Date().toISOString();
 
+    // Automatic Delivery Partner Allocation for Online Delivery
+    let allocatedRider = null;
+    if (type === 'DELIVERY') {
+      const available = deliveryPartners.filter(p => p.status === 'AVAILABLE');
+      let candidate = null;
+      if (available.length > 0) {
+        candidate = [...available].sort((a, b) => (a.activeOrders || 0) - (b.activeOrders || 0))[0];
+      } else {
+        const online = deliveryPartners.filter(p => p.status !== 'OFFLINE');
+        if (online.length > 0) {
+          candidate = [...online].sort((a, b) => (a.activeOrders || 0) - (b.activeOrders || 0))[0];
+        } else if (deliveryPartners.length > 0) {
+          candidate = deliveryPartners[0];
+        }
+      }
+
+      if (candidate) {
+        allocatedRider = {
+          id: candidate.id,
+          name: candidate.name,
+          phone: candidate.phone,
+          rating: candidate.rating || 4.9,
+          trips: (candidate.completedTrips || 100) + 1,
+          bikeNo: candidate.vehicleNo,
+          vehicleType: candidate.vehicleType || 'Electric Scooter',
+          avatar: candidate.avatar,
+          progressPercent: 15
+        };
+
+        // Mark partner as ON_DELIVERY and increment load
+        setDeliveryPartners(prev => prev.map(p => {
+          if (p.id === candidate.id) {
+            return {
+              ...p,
+              status: 'ON_DELIVERY',
+              activeOrders: (p.activeOrders || 0) + 1
+            };
+          }
+          return p;
+        }));
+
+        logActivity('DELIVERY', 'Auto-Allocated Delivery Partner', `${candidate.name} (${candidate.vehicleNo}) assigned to Order #${orderId}`);
+      }
+    }
+
     const newOrder = {
       id: orderId,
       type,
@@ -399,15 +800,7 @@ export const SupermarketProvider = ({ children }) => {
       deliveryInstructions: deliveryDetails.instructions || '',
       etaMinutes: deliveryDetails.speed === 'EXPRESS' ? 15 : 45,
       otp: String(Math.floor(1000 + Math.random() * 9000)),
-      rider: {
-        name: 'Rajesh Kumar',
-        phone: '+91 98765 43210',
-        rating: 4.9,
-        trips: 1420,
-        bikeNo: 'KA 05 MN 4821',
-        avatar: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=100&h=100&fit=crop&crop=face',
-        progressPercent: 10
-      },
+      rider: allocatedRider,
       // Takeaway
       pickupCounter: takeawayDetails.counter || 'Express Counter #02',
       lockerPin: String(Math.floor(1000 + Math.random() * 9000)),
@@ -472,14 +865,33 @@ export const SupermarketProvider = ({ children }) => {
   };
 
   // Status Modifiers for Staff or Simulation
-  const advanceOrderStatus = (orderId) => {
+  // Status Modifiers for Staff or Simulation
+  const advanceOrderStatus = (orderId, customRider = null) => {
     setOrders(prev => prev.map(order => {
       if (order.id !== orderId) return order;
 
       if (order.status === 'PLACED') return { ...order, status: 'CONFIRMED' };
       if (order.status === 'CONFIRMED') return { ...order, status: 'PACKING' };
       if (order.status === 'PACKING') {
-        if (order.type === 'DELIVERY') return { ...order, status: 'OUT_FOR_DELIVERY', etaMinutes: 10, rider: { ...order.rider, progressPercent: 30 } };
+        let assignedRider = order.rider;
+        if (customRider) {
+          assignedRider = {
+            id: customRider.id,
+            name: customRider.name,
+            phone: customRider.phone,
+            rating: customRider.rating || 4.9,
+            trips: (customRider.completedTrips || 100) + 1,
+            bikeNo: customRider.vehicleNo || customRider.bikeNo,
+            vehicleType: customRider.vehicleType || 'Electric Scooter',
+            avatar: customRider.avatar,
+            progressPercent: 30
+          };
+          setDeliveryPartners(plist => plist.map(p => p.id === customRider.id ? { ...p, status: 'ON_DELIVERY', activeOrders: (p.activeOrders || 0) + 1 } : p));
+        } else if (assignedRider) {
+          assignedRider = { ...assignedRider, progressPercent: 30 };
+        }
+
+        if (order.type === 'DELIVERY') return { ...order, status: 'OUT_FOR_DELIVERY', etaMinutes: 10, rider: assignedRider };
         if (order.type === 'TAKEAWAY') return { ...order, status: 'READY_FOR_PICKUP' };
         return { ...order, status: 'READY_TO_EXIT' };
       }
@@ -488,6 +900,7 @@ export const SupermarketProvider = ({ children }) => {
         if (prog < 90) {
           return { ...order, rider: { ...order.rider, progressPercent: 90 }, etaMinutes: 2 };
         }
+        freeUpRider(order.rider?.id);
         return { ...order, status: 'DELIVERED', completedAt: new Date().toISOString(), rider: { ...order.rider, progressPercent: 100 } };
       }
       if (order.status === 'READY_FOR_PICKUP') return { ...order, status: 'COLLECTED', completedAt: new Date().toISOString() };
@@ -502,6 +915,9 @@ export const SupermarketProvider = ({ children }) => {
     setOrders(prev => prev.map(order => {
       if (order.id !== orderId) return order;
       const finalStatus = order.type === 'DELIVERY' ? 'DELIVERED' : order.type === 'TAKEAWAY' ? 'COLLECTED' : 'COMPLETED';
+      if (order.type === 'DELIVERY') {
+        freeUpRider(order.rider?.id);
+      }
       return {
         ...order,
         status: finalStatus,
@@ -515,8 +931,41 @@ export const SupermarketProvider = ({ children }) => {
   const cancelOrder = (orderId) => {
     setOrders(prev => prev.map(order => {
       if (order.id !== orderId) return order;
+      if (order.rider?.id) {
+        freeUpRider(order.rider.id);
+      }
       return { ...order, status: 'CANCELLED' };
     }));
+  };
+
+  // Dedicated Delivery App Status Transition with OTP Verification
+  const deliveryUpdateOrderStatus = (orderId, newStatus, otpInput = '') => {
+    const targetOrder = orders.find(o => o.id === orderId);
+    if (!targetOrder) return { success: false, error: 'Order not found' };
+
+    if (newStatus === 'DELIVERED') {
+      if (targetOrder.otp && otpInput.trim() !== targetOrder.otp.trim()) {
+        soundEffects.playErrorBuzzer();
+        return { success: false, error: `Invalid Delivery OTP "${otpInput}". Please ask the customer for their 4-digit security code.` };
+      }
+      freeUpRider(targetOrder.rider?.id);
+    }
+
+    setOrders(prev => prev.map(o => {
+      if (o.id === orderId) {
+        return {
+          ...o,
+          status: newStatus,
+          ...(newStatus === 'OUT_FOR_DELIVERY' ? { dispatchedAt: new Date().toISOString(), rider: { ...o.rider, progressPercent: 50 } } : {}),
+          ...(newStatus === 'DELIVERED' ? { completedAt: new Date().toISOString(), rider: { ...o.rider, progressPercent: 100 } } : {})
+        };
+      }
+      return o;
+    }));
+
+    soundEffects.playSuccessChime();
+    logActivity('DELIVERY', `Delivery Status: ${newStatus}`, `Order #${orderId} updated by Delivery Partner`);
+    return { success: true };
   };
 
   // Staff POS sale processing
@@ -879,9 +1328,23 @@ export const SupermarketProvider = ({ children }) => {
       logoutCustomer,
       switchCustomerProfile,
       currentStaff,
-      isStaffAuthenticated: !!currentStaff,
+      isStaffAuthenticated: Boolean(currentStaff && currentStaff.id && ['Supermarket Operator', 'MANAGER', 'STAFF', 'ADMIN', 'Store Staff'].includes(currentStaff.role)),
+      isManager,
       loginStaff,
       logoutStaff,
+      staffMembers,
+      addStaffMember,
+      updateStaffStatus,
+      deleteStaffMember,
+      currentDeliveryPartner,
+      deliveryPartners,
+      isDeliveryAuthenticated: Boolean(currentDeliveryPartner && currentDeliveryPartner.id),
+      loginDeliveryPartner,
+      logoutDeliveryPartner,
+      addDeliveryPartner,
+      updateDeliveryPartnerStatus,
+      deleteDeliveryPartner,
+      deliveryUpdateOrderStatus,
       addToShoppingList,
       updateCartQuantity,
       removeFromShoppingList,
@@ -902,6 +1365,10 @@ export const SupermarketProvider = ({ children }) => {
       addNewProduct,
       validateCoupon,
       updateStoreSettings,
+      aiModalOpen,
+      setAiModalOpen,
+      openAiAssistant,
+      closeAiAssistant,
       resetToDefaultData,
       logActivity
     }}>

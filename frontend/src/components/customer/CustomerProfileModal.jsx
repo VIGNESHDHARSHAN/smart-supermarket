@@ -37,7 +37,7 @@ export default function CustomerProfileModal({ isOpen, onClose }) {
   const handleLogout = () => {
     logoutCustomer();
     onClose();
-    navigate('/customer/login');
+    navigate('/customer/login', { replace: true });
   };
 
   return (

@@ -18,7 +18,8 @@ import {
   Sparkles,
   Check,
   Bot,
-  Settings
+  Settings,
+  Bike
 } from 'lucide-react';
 import { useSupermarket } from '../context/SupermarketContext';
 import { useTheme } from '../context/ThemeContext';
@@ -31,7 +32,18 @@ import AIChatbotModal from '../components/customer/AIChatbotModal';
 export default function CustomerLayout() {
   const location = useLocation();
   const navigate = useNavigate();
-  const { shoppingList, orders, currentUser, storeStatus, isStoreOpen } = useSupermarket();
+  const { 
+    shoppingList, 
+    orders, 
+    currentUser, 
+    storeStatus, 
+    isStoreOpen, 
+    aiModalOpen, 
+    setAiModalOpen,
+    isStaffAuthenticated,
+    isDeliveryAuthenticated,
+    currentStaff
+  } = useSupermarket();
   const { theme, toggleTheme, isDark } = useTheme();
   const { language, setLanguage, t, supportedLanguages, currentLangMeta } = useLanguage();
 
@@ -39,7 +51,6 @@ export default function CustomerLayout() {
   const [storeMapOpen, setStoreMapOpen] = useState(false);
   const [userDropdownOpen, setUserDropdownOpen] = useState(false);
   const [langDropdownOpen, setLangDropdownOpen] = useState(false);
-  const [aiModalOpen, setAiModalOpen] = useState(false);
 
 
   // Active orders (non-completed)
@@ -97,18 +108,30 @@ export default function CustomerLayout() {
             )}
           </div>
 
-          <div className="flex items-center gap-4 text-gray-300">
+          <div className="flex items-center gap-3 sm:gap-4 text-gray-300">
             <button
               onClick={() => setStoreMapOpen(true)}
               className="hover:text-white flex items-center gap-1 transition-colors underline decoration-primary-400 decoration-2"
             >
               <Navigation className="w-3.5 h-3.5 text-primary-400" />
-              <span>Aisle Map & Store Navigator</span>
+              <span className="hidden sm:inline">Aisle Map & Store Navigator</span>
+              <span className="sm:hidden">Store Map</span>
             </button>
             <span className="text-gray-600">|</span>
-            <Link to="/staff/dashboard" className="hover:text-primary-400 flex items-center gap-1 font-semibold transition-colors">
-              <ShieldCheck className="w-3.5 h-3.5" />
-              <span>{t('staff_portal', 'Staff Portal')}</span>
+            <Link 
+              to={isDeliveryAuthenticated ? "/delivery/dashboard" : "/delivery/login"} 
+              className="hover:text-amber-400 flex items-center gap-1 font-semibold transition-colors"
+            >
+              <Bike className="w-3.5 h-3.5 text-amber-400" />
+              <span>{isDeliveryAuthenticated ? 'Rider App' : 'Delivery Portal'}</span>
+            </Link>
+            <span className="text-gray-600">|</span>
+            <Link 
+              to={isStaffAuthenticated ? "/staff/dashboard" : "/staff/login"} 
+              className="hover:text-primary-400 flex items-center gap-1 font-semibold transition-colors"
+            >
+              <ShieldCheck className="w-3.5 h-3.5 text-primary-400" />
+              <span>{isStaffAuthenticated ? (currentStaff?.name ? `Staff: ${currentStaff.name.split(' ')[0]}` : 'Staff Dashboard') : 'Staff Login'}</span>
             </Link>
           </div>
         </div>
@@ -309,16 +332,34 @@ export default function CustomerLayout() {
                         </button>
                         <div className="border-t border-gray-100 dark:border-slate-800 my-1"></div>
                         <button
-                          onClick={() => { setUserDropdownOpen(false); navigate('/customer/login'); }}
-                          className="w-full flex items-center gap-2 p-2 rounded-lg hover:bg-primary-50 dark:hover:bg-primary-950/60 text-primary-700 dark:text-primary-300 font-bold"
+                          onClick={() => { 
+                            setUserDropdownOpen(false); 
+                            const fullPath = location.pathname + location.search;
+                            navigate(`/customer/login?switch=true&redirect=${encodeURIComponent(fullPath)}`, { state: { from: fullPath } }); 
+                          }}
+                          className="w-full flex items-center gap-2 p-2 rounded-lg hover:bg-primary-50 dark:hover:bg-primary-950/60 text-primary-700 dark:text-primary-300 font-bold cursor-pointer"
                         >
                           <Sparkles className="w-4 h-4 text-primary-600" /> Switch / Customer Login
                         </button>
                         <button
-                          onClick={() => { setUserDropdownOpen(false); navigate('/staff/dashboard'); }}
-                          className="w-full flex items-center gap-2 p-2 rounded-lg hover:bg-charcoal-800 hover:text-white text-gray-700 dark:text-gray-200"
+                          onClick={() => { 
+                            setUserDropdownOpen(false); 
+                            navigate(isDeliveryAuthenticated ? '/delivery/dashboard' : '/delivery/login'); 
+                          }}
+                          className="w-full flex items-center gap-2 p-2 rounded-lg hover:bg-amber-500/10 hover:text-amber-600 text-gray-700 dark:text-gray-200 cursor-pointer"
                         >
-                          <ShieldCheck className="w-4 h-4 text-primary-600" /> Staff Admin Portal
+                          <Bike className="w-4 h-4 text-amber-500" /> 
+                          <span>{isDeliveryAuthenticated ? 'Delivery Partner Dashboard' : 'Delivery Partner Login'}</span>
+                        </button>
+                        <button
+                          onClick={() => { 
+                            setUserDropdownOpen(false); 
+                            navigate(isStaffAuthenticated ? '/staff/dashboard' : '/staff/login'); 
+                          }}
+                          className="w-full flex items-center gap-2 p-2 rounded-lg hover:bg-charcoal-800 hover:text-white text-gray-700 dark:text-gray-200 cursor-pointer"
+                        >
+                          <ShieldCheck className="w-4 h-4 text-primary-600" /> 
+                          <span>{isStaffAuthenticated ? 'Staff Admin Dashboard' : 'Staff & Manager Login'}</span>
                         </button>
                       </div>
                     </div>
@@ -334,7 +375,8 @@ export default function CustomerLayout() {
                     <Settings className="w-5 h-5" />
                   </Link>
                   <Link
-                    to="/customer/login"
+                    to={`/customer/login?redirect=${encodeURIComponent(location.pathname + location.search)}`}
+                    state={{ from: location.pathname + location.search }}
                     className="px-4 py-2 bg-primary-600 hover:bg-primary-700 text-white rounded-xl text-xs font-bold shadow-sm transition-colors"
                   >
                     Sign In
@@ -435,10 +477,28 @@ export default function CustomerLayout() {
                 <Link to="/customer/orders" className="hover:text-primary-600 dark:hover:text-primary-400">Live Order Tracking</Link>
               </li>
               <li>
-                <Link to="/customer/login" className="hover:text-primary-600 dark:hover:text-primary-400">Customer Login / Profiles</Link>
+                <Link 
+                  to={currentUser && currentUser.id !== 'cust_guest' ? '/customer/login?switch=true' : `/customer/login?redirect=${encodeURIComponent(location.pathname + location.search)}`} 
+                  className="hover:text-primary-600 dark:hover:text-primary-400"
+                >
+                  Customer Login / Profiles
+                </Link>
               </li>
               <li>
-                <Link to="/staff/dashboard" className="hover:text-primary-600 dark:hover:text-primary-400 font-semibold text-primary-700 dark:text-primary-400">Staff Admin Dashboard</Link>
+                <Link 
+                  to={isDeliveryAuthenticated ? "/delivery/dashboard" : "/delivery/login"} 
+                  className="hover:text-amber-600 dark:hover:text-amber-400 font-semibold text-amber-600 dark:text-amber-400"
+                >
+                  🛵 Delivery Partner App
+                </Link>
+              </li>
+              <li>
+                <Link 
+                  to={isStaffAuthenticated ? "/staff/dashboard" : "/staff/login"} 
+                  className="hover:text-primary-600 dark:hover:text-primary-400 font-semibold text-primary-700 dark:text-primary-400"
+                >
+                  🏢 Staff & Store Manager Portal
+                </Link>
               </li>
             </ul>
           </div>
@@ -474,18 +534,21 @@ export default function CustomerLayout() {
       <div className="fixed bottom-6 right-6 z-40">
         <button
           onClick={() => setAiModalOpen(true)}
-          className="group relative flex items-center gap-2.5 px-4 py-3.5 bg-gradient-to-r from-primary-600 via-indigo-600 to-purple-600 hover:from-primary-500 hover:to-indigo-500 text-white rounded-full shadow-[0_8px_25px_rgba(79,70,229,0.4)] hover:shadow-[0_12px_30px_rgba(79,70,229,0.55)] transition-all duration-300 hover:scale-105 active:scale-95 border border-white/20"
-          title="Open SmartMart AI Shopping Assistant"
+          className="group relative flex items-center gap-3 p-1.5 pr-4 bg-gradient-to-r from-primary-700 via-indigo-700 to-emerald-700 hover:from-primary-600 hover:to-emerald-600 text-white rounded-full shadow-[0_10px_30px_rgba(16,185,129,0.35)] hover:shadow-[0_14px_35px_rgba(16,185,129,0.5)] transition-all duration-300 hover:scale-105 active:scale-95 border-2 border-emerald-400/40 backdrop-blur-md"
+          title="Chat with Gemma • SmartMart AI Concierge"
         >
           <div className="relative">
-            <Bot className="w-6 h-6 text-white group-hover:rotate-12 transition-transform" />
-            <span className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-emerald-400 border-2 border-primary-600 rounded-full animate-pulse" />
+            <div className="w-11 h-11 rounded-full overflow-hidden border-2 border-white shadow-md ring-2 ring-emerald-400/50 group-hover:scale-105 transition-transform bg-emerald-800">
+              <img src="/smart-avatar.jpg" alt="Gemma AI Concierge" className="w-full h-full object-cover object-top" />
+            </div>
+            <span className="absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 bg-emerald-400 border-2 border-slate-900 rounded-full animate-pulse shadow-xs" />
           </div>
           <div className="hidden sm:flex flex-col text-left">
-            <span className="text-xs font-black tracking-wide leading-tight flex items-center gap-1">
-              SmartMart AI <Sparkles className="w-3 h-3 text-amber-300" />
+            <span className="text-xs font-black tracking-wide leading-tight flex items-center gap-1.5 text-white">
+              <span>Gemma AI</span>
+              <span className="bg-emerald-400/30 text-emerald-200 text-[9px] font-bold px-1.5 py-0.2 rounded-full border border-emerald-300/40 uppercase">Online</span>
             </span>
-            <span className="text-[10px] text-white/80 font-medium leading-tight">Ask anything</span>
+            <span className="text-[10px] text-emerald-100/90 font-medium leading-tight">Ask anything • Voice &amp; Chat</span>
           </div>
         </button>
       </div>

@@ -3,6 +3,7 @@ const router = express.Router();
 const mongoose = require('mongoose');
 const Order = require('../models/Order');
 const Product = require('../models/Product');
+const DeliveryPartner = require('../models/DeliveryPartner');
 
 // 1. CREATE NEW ORDER (Checkout / Payment Completion)
 router.post('/', async (req, res) => {
@@ -20,6 +21,9 @@ router.post('/', async (req, res) => {
       selfCheckoutDetails,
       customerName = 'Ananya Iyer',
       customerId = 'cust_1',
+      customerPhone = '+91 98765 00000',
+      deliveryAddress = '',
+      deliverySpeed = 'EXPRESS',
       bypassStoreHours = false
     } = req.body;
 
@@ -53,13 +57,47 @@ router.post('/', async (req, res) => {
       unit: item.unit || '1 unit',
     }));
 
+    // Auto-allocate delivery partner if delivery order
+    let allocatedRider = null;
+    let initialStatus = type === 'DELIVERY' ? 'PLACED' : (type === 'TAKEAWAY' ? 'CONFIRMED' : 'COMPLETED');
+
+    if (type === 'DELIVERY') {
+      try {
+        let partner = await DeliveryPartner.findOne({ status: 'AVAILABLE' }).sort({ activeOrders: 1, completedTrips: -1 });
+        if (!partner) {
+          partner = await DeliveryPartner.findOne({ status: { $ne: 'OFFLINE' } }).sort({ activeOrders: 1 });
+        }
+        if (partner) {
+          allocatedRider = {
+            id: partner.id,
+            name: partner.name,
+            phone: partner.phone,
+            rating: partner.rating || 4.9,
+            bikeNo: partner.vehicleNo,
+            vehicleType: partner.vehicleType || 'Electric Scooter',
+            avatar: partner.avatar,
+            progressPercent: 10
+          };
+          await DeliveryPartner.findByIdAndUpdate(partner._id, {
+            status: 'ON_DELIVERY',
+            $inc: { activeOrders: 1 }
+          });
+        }
+      } catch (err) {
+        console.warn('Auto-allocation warning in orders.js:', err.message);
+      }
+    }
+
     // Create Order document
     const createdOrder = await Order.create({
       id: orderId,
       type,
-      status: 'COMPLETED',
+      status: initialStatus,
       customerId,
       customerName,
+      customerPhone,
+      deliveryAddress,
+      deliverySpeed,
       paymentMode,
       transactionId,
       subtotal: Number(subtotal),
@@ -69,6 +107,7 @@ router.post('/', async (req, res) => {
       grandTotal: Number(grandTotal),
       exitPassCode,
       cartWeight,
+      rider: allocatedRider,
       items: normalizedItems,
     });
 
