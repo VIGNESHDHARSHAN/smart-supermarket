@@ -24,7 +24,7 @@ import {
 } from '../../services/api';
 import { soundEffects } from '../../lib/audio';
 
-export default function TwilioConfigModal({ isOpen, onClose, onConfigSaved }) {
+export default function TwilioConfigModal({ isOpen, onClose, onConfigSaved, onConfigUpdated }) {
   const [status, setStatus] = useState(null);
   const [isLoadingStatus, setIsLoadingStatus] = useState(true);
 
@@ -94,6 +94,7 @@ export default function TwilioConfigModal({ isOpen, onClose, onConfigSaved }) {
       setSaveSuccessMsg(res.message || 'Twilio credentials verified and connected successfully!');
       fetchStatus();
       if (onConfigSaved) onConfigSaved();
+      if (onConfigUpdated) onConfigUpdated();
     } catch (err) {
       soundEffects.playErrorBuzzer();
       setSaveErrorMsg(err.message || 'Failed to verify Twilio credentials. Check your SID and Token.');

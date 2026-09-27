@@ -1,8 +1,11 @@
 const express = require('express');
 const router = express.Router();
+const mongoose = require('mongoose');
 const User = require('../models/User');
 const Order = require('../models/Order');
 const { generateToken } = require('../middleware/auth');
+
+const isMongoId = (val) => mongoose.Types.ObjectId.isValid(val) && String(new mongoose.Types.ObjectId(val)) === String(val);
 
 // Customer / Staff Login
 router.post('/login', async (req, res) => {
@@ -109,7 +112,10 @@ router.patch('/phone', async (req, res) => {
 
     const cleanPhone = phone.trim();
     let query = {};
-    if (userId) query.$or = [{ id: userId }, { _id: userId }];
+    if (userId) {
+      query.$or = [{ id: userId }];
+      if (isMongoId(userId)) query.$or.push({ _id: userId });
+    }
     if (email) {
       if (!query.$or) query.$or = [];
       query.$or.push({ email: email.toLowerCase().trim() });
@@ -347,8 +353,10 @@ router.patch('/customers/:id', async (req, res) => {
 
     let updated = null;
     try {
+      const matchCriteria = [{ id }];
+      if (isMongoId(id)) matchCriteria.push({ _id: id });
       updated = await User.findOneAndUpdate(
-        { $or: [{ id }, { _id: id }] },
+        { $or: matchCriteria },
         { $set: updates },
         { new: true }
       );
