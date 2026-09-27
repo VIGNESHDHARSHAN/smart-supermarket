@@ -58,8 +58,9 @@ export default function MassBroadcastModal({
       Promise.all([
         apiGetRegisteredCustomers(),
         apiGetVoiceStatus()
-      ]).then(([custList, status]) => {
-        setCustomers(custList || []);
+      ]).then(([res, status]) => {
+        const custList = Array.isArray(res) ? res : (res?.customers || []);
+        setCustomers(custList);
         setVoiceStatus(status || {});
         setIsLoadingCustomers(false);
       });

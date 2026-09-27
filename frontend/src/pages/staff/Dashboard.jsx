@@ -189,6 +189,12 @@ export default function Dashboard() {
             <ShieldCheck className="w-3.5 h-3.5" /> Turnstile Gate Desk
           </Link>
           <Link
+            to="/staff/customers"
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold shadow-xs transition-colors"
+          >
+            <Users className="w-3.5 h-3.5" /> Registered Customers
+          </Link>
+          <Link
             to="/customer"
             className="flex items-center gap-1.5 px-3 py-1.5 bg-white hover:bg-gray-50 text-gray-700 rounded-xl text-xs font-bold border border-gray-200"
           >
@@ -291,6 +297,15 @@ export default function Dashboard() {
             onClick={() => setShowCreateOfferModal(true)}
           >
             <Plus className="w-3.5 h-3.5 mr-1" /> Add New Offer
+          </Button>
+
+          <Button
+            size="sm"
+            variant="outline"
+            className="text-xs font-bold bg-white dark:bg-slate-900 border-gray-300 dark:border-slate-700 flex items-center gap-1.5"
+            onClick={() => navigate('/staff/customers')}
+          >
+            <Users className="w-3.5 h-3.5 text-indigo-600" /> View Customers Directory
           </Button>
 
           <Button

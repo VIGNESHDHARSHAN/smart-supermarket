@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { 
   Megaphone, 
   Plus, 
@@ -15,7 +16,8 @@ import {
   Settings,
   AlertCircle,
   Users,
-  Bell
+  Bell,
+  UserCheck
 } from 'lucide-react';
 import { Button } from '../../components/ui/Button';
 import { 
@@ -31,6 +33,7 @@ import MassBroadcastModal from '../../components/voice/MassBroadcastModal';
 import NotifyUnregisteredModal from '../../components/voice/NotifyUnregisteredModal';
 
 export default function StaffCampaigns() {
+  const navigate = useNavigate();
   const [campaigns, setCampaigns] = useState([]);
   const [history, setHistory] = useState([]);
   const [voiceStatus, setVoiceStatus] = useState({ provider: 'Checking...', isLiveConfigured: false });
@@ -148,6 +151,15 @@ export default function StaffCampaigns() {
             className="text-xs font-bold flex items-center gap-1.5"
           >
             <RefreshCw className="w-3.5 h-3.5" /> Refresh
+          </Button>
+
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => navigate('/staff/customers')}
+            className="text-xs font-bold flex items-center gap-1.5"
+          >
+            <UserCheck className="w-3.5 h-3.5 text-primary-600" /> View Registered Customers
           </Button>
 
           <Button

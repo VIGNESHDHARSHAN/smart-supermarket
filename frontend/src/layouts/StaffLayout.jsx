@@ -17,6 +17,7 @@ import {
   Settings,
   Bike,
   Users,
+  UserCheck,
   KeyRound,
   Megaphone
 } from 'lucide-react';
@@ -78,6 +79,13 @@ export default function StaffLayout() {
       icon: Users,
       badge: isManager ? 'Manager' : null,
       badgeColor: 'amber'
+    },
+    { 
+      name: 'Registered Customers', 
+      href: '/staff/customers', 
+      icon: UserCheck,
+      badge: 'CRM',
+      badgeColor: 'purple'
     },
     { 
       name: 'Campaigns & SMS/Voice Deals', 
