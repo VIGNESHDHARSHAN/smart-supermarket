@@ -1,5 +1,7 @@
 const express = require('express');
 const router = express.Router();
+const fs = require('fs');
+const path = require('path');
 const User = require('../models/User');
 const Order = require('../models/Order');
 
@@ -81,20 +83,71 @@ function formatE164(phone, defaultCountry = '+91') {
 }
 
 /**
- * Dynamically read and clean Twilio credentials (auto-reloads on .env changes)
+ * Resolve twilio library safely from local or root node_modules
+ */
+function getTwilioModule() {
+  try {
+    return require('twilio');
+  } catch (e1) {
+    try {
+      return require(path.resolve(__dirname, '../../node_modules/twilio'));
+    } catch (e2) {
+      console.warn('Cannot resolve twilio library:', e2.message);
+      return null;
+    }
+  }
+}
+
+/**
+ * Format Twilio error into user-friendly diagnostic guidance
+ */
+function parseTwilioError(err, recipient = '') {
+  if (!err) return 'Twilio dispatch failed.';
+  const code = err.code || err.status;
+  const msg = err.message || String(err);
+
+  if (code === 21608 || msg.toLowerCase().includes('unverified')) {
+    return `Twilio Free Trial Notice: The recipient number ${recipient} is not verified. On a Twilio trial account, you must add and verify this mobile number in your Twilio Console under "Verified Caller IDs" (https://console.twilio.com/develop/phone-numbers/manage/verified).`;
+  }
+  if (code === 21211 || msg.toLowerCase().includes('invalid')) {
+    return `Invalid phone number format: ${recipient}. Please enter a valid number with country code (e.g. +91 9876543210).`;
+  }
+  if (code === 20003 || msg.toLowerCase().includes('authenticate')) {
+    return 'Twilio Authentication Failed: Please check your Account SID and Auth Token in backend/.env.';
+  }
+  if (code === 21606 || msg.toLowerCase().includes('not a valid phone number')) {
+    return `Twilio from number is not valid or not active on your Twilio account: ${err.message}`;
+  }
+  return msg;
+}
+
+/**
+ * Dynamically read and clean Twilio credentials (direct from disk, auto-reloads on .env changes)
  */
 function getTwilioCredentials() {
+  let fileSid = '', fileToken = '', filePhone = '';
   try {
-    const dotenv = require('dotenv');
-    const path = require('path');
     const envPath = path.resolve(__dirname, '../.env');
-    const parsed = dotenv.config({ path: envPath }).parsed || {};
-    Object.assign(process.env, parsed);
+    if (fs.existsSync(envPath)) {
+      const content = fs.readFileSync(envPath, 'utf8');
+      content.split('\n').forEach(line => {
+        const trimmed = line.trim();
+        if (trimmed.startsWith('#')) return;
+        const match = trimmed.match(/^([^=]+)=(.*)$/);
+        if (match) {
+          const key = match[1].trim();
+          const val = match[2].trim().replace(/^['"]|['"]$/g, '');
+          if (key === 'TWILIO_ACCOUNT_SID') fileSid = val;
+          if (key === 'TWILIO_AUTH_TOKEN') fileToken = val;
+          if (key === 'TWILIO_PHONE_NUMBER') filePhone = val;
+        }
+      });
+    }
   } catch (e) {}
 
-  const sid = (process.env.TWILIO_ACCOUNT_SID || '').trim().replace(/['"]/g, '');
-  const token = (process.env.TWILIO_AUTH_TOKEN || '').trim().replace(/['"]/g, '');
-  const phone = (process.env.TWILIO_PHONE_NUMBER || '').trim().replace(/['"]/g, '');
+  const sid = (fileSid || process.env.TWILIO_ACCOUNT_SID || '').trim().replace(/['"]/g, '');
+  const token = (fileToken || process.env.TWILIO_AUTH_TOKEN || '').trim().replace(/['"]/g, '');
+  const phone = (filePhone || process.env.TWILIO_PHONE_NUMBER || '').trim().replace(/['"]/g, '');
 
   const isConfigured = Boolean(
     sid &&
@@ -116,12 +169,14 @@ function getTwilioClient() {
 
   if (isConfigured) {
     try {
-      const twilio = require('twilio');
-      return {
-        client: twilio(sid, token),
-        fromPhone: phone,
-        isLive: true
-      };
+      const twilio = getTwilioModule();
+      if (twilio) {
+        return {
+          client: twilio(sid, token),
+          fromPhone: phone,
+          isLive: true
+        };
+      }
     } catch (err) {
       console.warn('Twilio library initialization error:', err.message);
     }
@@ -253,8 +308,8 @@ router.post('/send-sms', async (req, res) => {
     }
   } catch (error) {
     console.error('Error in /api/voice/send-sms:', error);
-    return res.status(500).json({
-      error: error.message || 'Failed to dispatch SMS',
+    return res.status(400).json({
+      error: parseTwilioError(error, formattedTo),
       details: error.code ? `Twilio Code: ${error.code}` : undefined
     });
   }
@@ -380,8 +435,8 @@ router.post('/send-voicemail', async (req, res) => {
     }
   } catch (error) {
     console.error('Error in /api/voice/send-voicemail:', error);
-    return res.status(500).json({
-      error: error.message || 'Failed to dispatch voicemail call',
+    return res.status(400).json({
+      error: parseTwilioError(error, formattedTo),
       details: error.code ? `Twilio Code: ${error.code}` : undefined
     });
   }
@@ -424,7 +479,7 @@ router.post('/send-offer-alert', async (req, res) => {
           });
           results.sms = { success: true, mode: 'twilio_live', sid: msg.sid };
         } catch (e) {
-          results.sms = { success: false, error: e.message };
+          results.sms = { success: false, error: parseTwilioError(e, formattedTo), code: e.code };
         }
       } else {
         results.sms = { success: true, mode: 'simulated', sid: `SM_SIM_${Date.now()}` };
@@ -460,7 +515,7 @@ router.post('/send-offer-alert', async (req, res) => {
           });
           results.voicemail = { success: true, mode: 'twilio_live', callSid: call.sid };
         } catch (e) {
-          results.voicemail = { success: false, error: e.message };
+          results.voicemail = { success: false, error: parseTwilioError(e, formattedTo), code: e.code };
         }
       } else {
         results.voicemail = { success: true, mode: 'simulated', callSid: `CA_SIM_${Date.now()}` };
@@ -470,6 +525,20 @@ router.post('/send-offer-alert', async (req, res) => {
     // Increment campaign count if matching
     const matched = activeCampaigns.find(c => c.promoCode === promoCode || c.title === offerTitle);
     if (matched) matched.totalDispatched = (matched.totalDispatched || 0) + 1;
+
+    const allFailed = Object.values(results).length > 0 && Object.values(results).every(r => !r.success);
+    if (allFailed) {
+      const errMsg = Object.entries(results)
+        .map(([ch, r]) => `${ch}: ${r.error}`)
+        .join(' | ');
+      return res.status(400).json({
+        success: false,
+        recipient: formattedTo,
+        error: errMsg,
+        message: errMsg,
+        results
+      });
+    }
 
     return res.status(200).json({
       success: true,
@@ -481,7 +550,7 @@ router.post('/send-offer-alert', async (req, res) => {
     });
   } catch (error) {
     console.error('Error in /api/voice/send-offer-alert:', error);
-    return res.status(500).json({ error: error.message });
+    return res.status(500).json({ error: parseTwilioError(error) });
   }
 });
 
