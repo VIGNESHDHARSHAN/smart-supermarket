@@ -833,6 +833,38 @@ export const apiUpdateCustomerRecord = async (customerId, updates) => {
   }
 };
 
+/**
+ * Manager action: Save & verify Twilio credentials
+ */
+export const apiSaveTwilioConfig = async ({ accountSid, authToken, phoneNumber }) => {
+  const res = await customFetch(`${API_BASE_URL}/voice/config`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ accountSid, authToken, phoneNumber })
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    throw new Error(data.error || 'Failed to save Twilio configuration');
+  }
+  return data;
+};
+
+/**
+ * Dispatch test voice call and/or SMS with live diagnostic error feedback
+ */
+export const apiTestTwilioDispatch = async ({ to, type = 'BOTH' }) => {
+  const res = await customFetch(`${API_BASE_URL}/voice/test-dispatch`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ to, type })
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    throw new Error(data.error || 'Failed to run test dispatch');
+  }
+  return data;
+};
+
 
 
 

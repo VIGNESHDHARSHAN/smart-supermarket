@@ -14,7 +14,9 @@ import {
   Check, 
   Clock,
   Zap,
-  Tag
+  Tag,
+  Settings,
+  Volume2
 } from 'lucide-react';
 import { Button } from '../ui/Button';
 import { 
@@ -23,6 +25,7 @@ import {
   apiGetVoiceStatus 
 } from '../../services/api';
 import { soundEffects } from '../../lib/audio';
+import TwilioConfigModal from './TwilioConfigModal';
 
 export default function MassBroadcastModal({
   isOpen,
@@ -44,6 +47,8 @@ export default function MassBroadcastModal({
   const [result, setResult] = useState(null);
   const [voiceStatus, setVoiceStatus] = useState({ provider: 'Checking...', isLiveConfigured: false });
   const [isLoadingCustomers, setIsLoadingCustomers] = useState(true);
+  const [showTwilioConfig, setShowTwilioConfig] = useState(false);
+  const [isPlayingSpeech, setIsPlayingSpeech] = useState(false);
 
   useEffect(() => {
     if (isOpen) {
@@ -73,6 +78,33 @@ export default function MassBroadcastModal({
   const activePromoCode = selectedOffer ? selectedOffer.promoCode : customPromoCode;
   const activeDiscount = selectedOffer ? selectedOffer.discountPercent : customDiscount;
   const activeDescription = selectedOffer ? selectedOffer.description : customDescription;
+
+  const handlePlayVoicemail = () => {
+    if (!('speechSynthesis' in window)) {
+      alert('Browser speech synthesis is not supported on this device.');
+      return;
+    }
+    if (isPlayingSpeech) {
+      window.speechSynthesis.cancel();
+      setIsPlayingSpeech(false);
+      return;
+    }
+
+    const scriptText = `Hello! This is SmartMart Supermarket with an exclusive announcement for our registered members! ${activeTitle}. Enjoy an instant ${activeDiscount}% discount using promo code ${activePromoCode} at checkout. Visit our supermarket or order online today!`;
+    const utterance = new SpeechSynthesisUtterance(scriptText);
+    utterance.rate = 0.95;
+    utterance.pitch = 1.05;
+    const voices = window.speechSynthesis.getVoices();
+    const preferredVoice = voices.find(v => v.lang.includes('en-IN') || v.name.includes('India')) ||
+                           voices.find(v => v.lang.includes('en-US')) || voices[0];
+    if (preferredVoice) utterance.voice = preferredVoice;
+
+    utterance.onstart = () => setIsPlayingSpeech(true);
+    utterance.onend = () => setIsPlayingSpeech(false);
+    utterance.onerror = () => setIsPlayingSpeech(false);
+
+    window.speechSynthesis.speak(utterance);
+  };
 
   const handleLaunchBlast = async () => {
     if (!activeTitle || !activePromoCode) {
@@ -130,16 +162,22 @@ export default function MassBroadcastModal({
               <Megaphone className="w-5 h-5 animate-bounce" />
             </div>
             <div>
-              <h3 className="text-base font-black flex items-center gap-2">
-                Mass Customer Outreach &amp; Blast
-                <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold uppercase ${
-                  voiceStatus.isLiveConfigured 
-                    ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300' 
-                    : 'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300'
-                }`}>
-                  {voiceStatus.isLiveConfigured ? 'Twilio Live' : 'Simulation Mode'}
-                </span>
-              </h3>
+              <div className="flex items-center gap-2">
+                <h3 className="text-base font-black">Mass Outreach &amp; Blast</h3>
+                <button
+                  type="button"
+                  onClick={() => setShowTwilioConfig(true)}
+                  className={`text-[10px] px-2 py-0.5 rounded-full font-bold uppercase flex items-center gap-1 cursor-pointer transition-all hover:scale-105 ${
+                    voiceStatus.isLiveConfigured 
+                      ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300' 
+                      : 'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300 border border-amber-300'
+                  }`}
+                  title="Configure Twilio live credentials"
+                >
+                  <Settings className="w-2.5 h-2.5" />
+                  <span>{voiceStatus.isLiveConfigured ? 'Twilio Live' : 'Simulation Mode'}</span>
+                </button>
+              </div>
               <p className="text-xs text-gray-500 dark:text-gray-400">
                 Broadcast offers via automated Voicemail &amp; SMS to all registered phone numbers
               </p>
@@ -251,9 +289,24 @@ export default function MassBroadcastModal({
         </div>
 
         {/* Message Preview */}
-        <div className="p-3.5 bg-gray-50 dark:bg-slate-800 rounded-2xl border border-gray-200 dark:border-slate-700 text-xs space-y-1">
-          <div className="font-bold text-gray-500 uppercase text-[10px] flex items-center gap-1">
-            <Sparkles className="w-3 h-3 text-amber-500" /> Voice &amp; SMS Broadcast Preview
+        <div className="p-3.5 bg-gray-50 dark:bg-slate-800 rounded-2xl border border-gray-200 dark:border-slate-700 text-xs space-y-2">
+          <div className="flex items-center justify-between">
+            <div className="font-bold text-gray-500 uppercase text-[10px] flex items-center gap-1">
+              <Sparkles className="w-3 h-3 text-amber-500" /> Voice &amp; SMS Broadcast Preview
+            </div>
+            <Button
+              type="button"
+              size="sm"
+              onClick={handlePlayVoicemail}
+              className={`text-[11px] font-black h-7 px-2.5 rounded-lg shadow-xs flex items-center gap-1.5 transition-all ${
+                isPlayingSpeech 
+                  ? 'bg-rose-600 hover:bg-rose-700 text-white animate-pulse' 
+                  : 'bg-purple-600 hover:bg-purple-700 text-white'
+              }`}
+            >
+              <Volume2 className="w-3 h-3" />
+              <span>{isPlayingSpeech ? 'Stop Voice' : '▶️ Hear Voicemail Audio'}</span>
+            </Button>
           </div>
           <div className="font-mono text-gray-700 dark:text-gray-200 text-[11px] leading-relaxed">
             "Hello [Customer Name], this is SmartMart Supermarket with an exciting announcement! <strong>{activeTitle}</strong> is now live with <strong>{activeDiscount}% OFF</strong>. Use code <strong>{activePromoCode}</strong> at checkout. Order online or visit our store today!"
@@ -317,6 +370,17 @@ export default function MassBroadcastModal({
         </div>
 
       </div>
+
+      {/* Twilio Telephony Setup Modal */}
+      {showTwilioConfig && (
+        <TwilioConfigModal
+          isOpen={showTwilioConfig}
+          onClose={() => setShowTwilioConfig(false)}
+          onConfigUpdated={() => {
+            apiGetVoiceStatus().then(st => setVoiceStatus(st || {}));
+          }}
+        />
+      )}
     </div>
   );
 }

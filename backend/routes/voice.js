@@ -81,22 +81,50 @@ function formatE164(phone, defaultCountry = '+91') {
 }
 
 /**
+ * Dynamically read and clean Twilio credentials (auto-reloads on .env changes)
+ */
+function getTwilioCredentials() {
+  try {
+    const dotenv = require('dotenv');
+    const path = require('path');
+    const envPath = path.resolve(__dirname, '../.env');
+    const parsed = dotenv.config({ path: envPath }).parsed || {};
+    Object.assign(process.env, parsed);
+  } catch (e) {}
+
+  const sid = (process.env.TWILIO_ACCOUNT_SID || '').trim().replace(/['"]/g, '');
+  const token = (process.env.TWILIO_AUTH_TOKEN || '').trim().replace(/['"]/g, '');
+  const phone = (process.env.TWILIO_PHONE_NUMBER || '').trim().replace(/['"]/g, '');
+
+  const isConfigured = Boolean(
+    sid &&
+    token &&
+    phone &&
+    sid.startsWith('AC') &&
+    sid.length >= 30 &&
+    !sid.includes('your_')
+  );
+
+  return { sid, token, phone, isConfigured };
+}
+
+/**
  * Check if Twilio is properly configured with live keys
  */
 function getTwilioClient() {
-  const accountSid = process.env.TWILIO_ACCOUNT_SID;
-  const authToken = process.env.TWILIO_AUTH_TOKEN;
-  const fromPhone = process.env.TWILIO_PHONE_NUMBER;
-
-  const isConfigured = !!(accountSid && authToken && fromPhone && !accountSid.includes('your_') && accountSid.startsWith('AC'));
+  const { sid, token, phone, isConfigured } = getTwilioCredentials();
 
   if (isConfigured) {
-    const twilio = require('twilio');
-    return {
-      client: twilio(accountSid, authToken),
-      fromPhone,
-      isLive: true
-    };
+    try {
+      const twilio = require('twilio');
+      return {
+        client: twilio(sid, token),
+        fromPhone: phone,
+        isLive: true
+      };
+    } catch (err) {
+      console.warn('Twilio library initialization error:', err.message);
+    }
   }
   return { client: null, fromPhone: '+10000000000', isLive: false };
 }
@@ -454,6 +482,227 @@ router.post('/send-offer-alert', async (req, res) => {
   } catch (error) {
     console.error('Error in /api/voice/send-offer-alert:', error);
     return res.status(500).json({ error: error.message });
+  }
+});
+
+/**
+ * GET /api/voice/status
+ * Check Twilio live connection health and credentials validation
+ */
+router.get('/status', async (req, res) => {
+  try {
+    const { sid, token, phone, isConfigured } = getTwilioCredentials();
+
+    let verification = { verified: false, error: null, accountName: null, accountStatus: null, accountType: null };
+
+    if (isConfigured) {
+      try {
+        const twilio = require('twilio');
+        const client = twilio(sid, token);
+        const acc = await client.api.v2010.accounts(sid).fetch();
+        verification = {
+          verified: true,
+          error: null,
+          accountName: acc.friendlyName,
+          accountStatus: acc.status,
+          accountType: acc.type
+        };
+      } catch (err) {
+        verification = {
+          verified: false,
+          error: err.message,
+          code: err.code
+        };
+      }
+    }
+
+    const isLive = isConfigured && verification.verified;
+
+    res.json({
+      success: true,
+      isLiveConfigured: isLive,
+      provider: isLive ? 'Twilio Live Carrier' : 'Simulation Mode',
+      hasSid: Boolean(sid),
+      hasToken: Boolean(token),
+      hasPhone: Boolean(phone),
+      sidPreview: sid ? `${sid.substring(0, 6)}...${sid.slice(-4)}` : null,
+      fromPhone: phone || null,
+      verification,
+      troubleshooting: {
+        trialAccountNote: 'If you have a Twilio Free Trial account, calls and SMS can ONLY be sent to phone numbers verified under "Verified Caller IDs" in Twilio Console.',
+        twilioConsoleUrl: 'https://console.twilio.com',
+        verifiedNumbersUrl: 'https://console.twilio.com/develop/phone-numbers/manage/verified'
+      }
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/**
+ * POST /api/voice/config
+ * Save and verify Twilio credentials directly from Manager portal
+ */
+router.post('/config', async (req, res) => {
+  try {
+    const { accountSid, authToken, phoneNumber } = req.body || {};
+
+    if (!accountSid || !authToken || !phoneNumber) {
+      return res.status(400).json({ error: 'Account SID, Auth Token, and Twilio Phone Number are all required.' });
+    }
+
+    const cleanSid = accountSid.trim().replace(/['"]/g, '');
+    const cleanToken = authToken.trim().replace(/['"]/g, '');
+    let cleanPhone = phoneNumber.trim().replace(/['"]/g, '').replace(/[\s-]/g, '');
+
+    if (!cleanPhone.startsWith('+')) {
+      cleanPhone = `+${cleanPhone}`;
+    }
+
+    if (!cleanSid.startsWith('AC')) {
+      return res.status(400).json({ error: 'Invalid Account SID. Twilio Account SID must start with "AC".' });
+    }
+
+    // 1. Verify with Twilio API before saving
+    let accInfo = null;
+    try {
+      const twilio = require('twilio');
+      const client = twilio(cleanSid, cleanToken);
+      accInfo = await client.api.v2010.accounts(cleanSid).fetch();
+    } catch (authErr) {
+      return res.status(400).json({
+        error: `Twilio Authentication Failed: ${authErr.message}. Please double-check your Account SID and Auth Token in Twilio Console.`,
+        code: authErr.code
+      });
+    }
+
+    // 2. Update memory process.env
+    process.env.TWILIO_ACCOUNT_SID = cleanSid;
+    process.env.TWILIO_AUTH_TOKEN = cleanToken;
+    process.env.TWILIO_PHONE_NUMBER = cleanPhone;
+
+    // 3. Persist to backend/.env file
+    const fs = require('fs');
+    const path = require('path');
+    const envPath = path.resolve(__dirname, '../.env');
+    let envContent = '';
+    if (fs.existsSync(envPath)) {
+      envContent = fs.readFileSync(envPath, 'utf8');
+    }
+
+    const setOrAppend = (content, key, val) => {
+      const regex = new RegExp(`^${key}=.*$`, 'm');
+      if (regex.test(content)) {
+        return content.replace(regex, `${key}=${val}`);
+      } else {
+        return (content.trim() ? content.trim() + '\n' : '') + `${key}=${val}\n`;
+      }
+    };
+
+    envContent = setOrAppend(envContent, 'TWILIO_ACCOUNT_SID', cleanSid);
+    envContent = setOrAppend(envContent, 'TWILIO_AUTH_TOKEN', cleanToken);
+    envContent = setOrAppend(envContent, 'TWILIO_PHONE_NUMBER', cleanPhone);
+
+    fs.writeFileSync(envPath, envContent, 'utf8');
+
+    res.json({
+      success: true,
+      message: `Twilio connected! Verified account "${accInfo.friendlyName}" (${accInfo.type}). Live phone calls & SMS are now active.`,
+      accountName: accInfo.friendlyName,
+      accountStatus: accInfo.status,
+      accountType: accInfo.type,
+      fromPhone: cleanPhone
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/**
+ * POST /api/voice/test-dispatch
+ * Dispatches a quick live test SMS and/or Voice Call with real-time error diagnostics
+ */
+router.post('/test-dispatch', async (req, res) => {
+  try {
+    const { to, type = 'BOTH' } = req.body || {};
+    if (!to) {
+      return res.status(400).json({ error: 'Recipient phone number is required.' });
+    }
+
+    const formattedTo = formatE164(to);
+    const { client, fromPhone, isLive } = getTwilioClient();
+
+    if (!isLive) {
+      return res.json({
+        success: true,
+        mode: 'simulated',
+        recipient: formattedTo,
+        message: 'Running in Simulation Mode. To receive real phone calls and SMS on your device, connect your Twilio credentials.',
+        simulated: true
+      });
+    }
+
+    const diagnostics = { sms: null, voice: null };
+
+    // 1. Test SMS
+    if (type === 'SMS' || type === 'BOTH') {
+      try {
+        const msg = await client.messages.create({
+          to: formattedTo,
+          from: fromPhone,
+          body: `🛒 SmartMart Supermarket: Live telephony test successfully verified! Voicemail and SMS promotions are active.`
+        });
+        diagnostics.sms = { success: true, sid: msg.sid, status: msg.status };
+      } catch (e) {
+        diagnostics.sms = {
+          success: false,
+          error: e.message,
+          code: e.code,
+          isUnverifiedTrialNumber: e.code === 21608
+        };
+      }
+    }
+
+    // 2. Test Voice Call
+    if (type === 'VOICEMAIL' || type === 'BOTH') {
+      try {
+        const twiml = `
+          <Response>
+            <Pause length="1"/>
+            <Say voice="Polly.Aditi" language="en-IN">
+              Hello! This is a live voice test from SmartMart Supermarket. Your Twilio Voicemail and SMS integration is working properly! Thank you and goodbye.
+            </Say>
+          </Response>
+        `;
+        const call = await client.calls.create({
+          to: formattedTo,
+          from: fromPhone,
+          twiml
+        });
+        diagnostics.voice = { success: true, sid: call.sid, status: call.status };
+      } catch (e) {
+        diagnostics.voice = {
+          success: false,
+          error: e.message,
+          code: e.code,
+          isUnverifiedTrialNumber: e.code === 21608
+        };
+      }
+    }
+
+    const overallSuccess = (diagnostics.sms?.success || !diagnostics.sms) && (diagnostics.voice?.success || !diagnostics.voice);
+
+    res.json({
+      success: overallSuccess,
+      recipient: formattedTo,
+      fromPhone,
+      diagnostics,
+      message: overallSuccess 
+        ? `Live test dispatched to ${formattedTo}!` 
+        : `Twilio error: ${(diagnostics.sms?.error || diagnostics.voice?.error)}`
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
   }
 });
 

@@ -10,11 +10,13 @@ import {
   Tag, 
   Percent, 
   Sparkles,
-  Volume2
+  Volume2,
+  Settings
 } from 'lucide-react';
 import { Button } from '../ui/Button';
 import { apiSendOfferAlert, apiGetVoiceStatus } from '../../services/api';
 import { soundEffects } from '../../lib/audio';
+import TwilioConfigModal from './TwilioConfigModal';
 
 export default function OfferAlertModal({
   isOpen,
@@ -30,17 +32,47 @@ export default function OfferAlertModal({
   const [isSending, setIsSending] = useState(false);
   const [result, setResult] = useState(null);
   const [voiceProvider, setVoiceProvider] = useState({ provider: 'Checking...', isLiveConfigured: false });
+  const [showTwilioConfig, setShowTwilioConfig] = useState(false);
+  const [isPlayingSpeech, setIsPlayingSpeech] = useState(false);
+
+  const fetchProviderStatus = () => {
+    apiGetVoiceStatus().then(status => {
+      if (status) setVoiceProvider(status);
+    });
+  };
 
   useEffect(() => {
     if (isOpen) {
       setResult(null);
       if (defaultPhone) setPhone(defaultPhone);
       if (defaultName) setCustomerName(defaultName);
-      apiGetVoiceStatus().then(status => {
-        if (status) setVoiceProvider(status);
-      });
+      fetchProviderStatus();
     }
   }, [isOpen, defaultPhone, defaultName]);
+
+  const handlePlayVoicemail = () => {
+    if (!('speechSynthesis' in window)) {
+      alert('Your browser does not support audio speech synthesis.');
+      return;
+    }
+    if (isPlayingSpeech) {
+      window.speechSynthesis.cancel();
+      setIsPlayingSpeech(false);
+      return;
+    }
+    const cleanName = customerName || 'Valued Shopper';
+    const text = `Hello ${cleanName}, this is SmartMart Supermarket with an exciting announcement! ${offer.title} is now live with an exclusive ${offer.discountPercent} percent discount. Use coupon code ${offer.promoCode} at checkout. Order online with fifteen-minute doorstep delivery or visit our express store. Thank you and have a wonderful day!`;
+    const utterance = new SpeechSynthesisUtterance(text);
+    utterance.rate = 0.95;
+    utterance.pitch = 1.05;
+    const voices = window.speechSynthesis.getVoices();
+    const indVoice = voices.find(v => v.lang === 'en-IN' || v.name.includes('India') || v.lang === 'en-GB');
+    if (indVoice) utterance.voice = indVoice;
+    utterance.onstart = () => setIsPlayingSpeech(true);
+    utterance.onend = () => setIsPlayingSpeech(false);
+    utterance.onerror = () => setIsPlayingSpeech(false);
+    window.speechSynthesis.speak(utterance);
+  };
 
   if (!isOpen || !offer) return null;
 
@@ -97,18 +129,24 @@ export default function OfferAlertModal({
               <Megaphone className="w-5 h-5 animate-bounce" />
             </div>
             <div>
-              <h3 className="text-base font-black flex items-center gap-2">
-                Send Offer to Phone
-                <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold uppercase ${
-                  voiceProvider.isLiveConfigured 
-                    ? 'bg-emerald-100 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300' 
-                    : 'bg-amber-100 dark:bg-amber-950 text-amber-700 dark:text-amber-300'
-                }`}>
-                  {voiceProvider.isLiveConfigured ? 'Twilio Live' : 'Simulation'}
-                </span>
-              </h3>
+              <div className="flex items-center gap-2">
+                <h3 className="text-base font-black">Send Offer to Phone</h3>
+                <button
+                  type="button"
+                  onClick={() => setShowTwilioConfig(true)}
+                  className={`text-[10px] px-2 py-0.5 rounded-full font-bold uppercase flex items-center gap-1 cursor-pointer transition-all hover:scale-105 ${
+                    voiceProvider.isLiveConfigured 
+                      ? 'bg-emerald-100 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300' 
+                      : 'bg-amber-100 dark:bg-amber-950 text-amber-700 dark:text-amber-300 border border-amber-300'
+                  }`}
+                  title="Configure Twilio live credentials"
+                >
+                  <Settings className="w-2.5 h-2.5" />
+                  <span>{voiceProvider.isLiveConfigured ? 'Twilio Live' : 'Simulation'}</span>
+                </button>
+              </div>
               <p className="text-xs text-gray-500 dark:text-gray-400">
-                Automated SMS & Voicemail Deal Alert
+                Automated SMS &amp; Voicemail Deal Alert
               </p>
             </div>
           </div>
@@ -121,7 +159,7 @@ export default function OfferAlertModal({
         </div>
 
         {/* Selected Offer Card Preview */}
-        <div className="p-4 rounded-2xl bg-linear-to-r from-amber-500/10 via-orange-500/10 to-rose-500/10 border border-amber-200/60 dark:border-amber-800/40 space-y-2">
+        <div className="p-4 rounded-2xl bg-gradient-to-r from-amber-500/10 via-orange-500/10 to-rose-500/10 border border-amber-200/60 dark:border-amber-800/40 space-y-2">
           <div className="flex items-center justify-between">
             <span className="text-xs font-bold text-amber-700 dark:text-amber-400 flex items-center gap-1">
               <Tag className="w-3.5 h-3.5" /> {offer.category || 'Special Promotion'}
@@ -138,11 +176,58 @@ export default function OfferAlertModal({
           </p>
           <div className="pt-1 flex items-center gap-2">
             <span className="text-[11px] text-gray-500 dark:text-gray-400">Coupon:</span>
-            <span className="px-2.5 py-0.5 rounded-md bg-white dark:bg-slate-800 border border-gray-300 dark:border-slate-700 font-mono font-bold text-xs text-primary-600 dark:text-primary-400 tracking-wider">
+            <span className="font-mono font-black text-xs text-primary-600 dark:text-primary-400 bg-white dark:bg-slate-800 px-2 py-0.5 rounded border border-gray-200 dark:border-slate-700">
               {offer.promoCode}
             </span>
           </div>
         </div>
+
+        {/* In-Browser Voicemail Audio Speech Player */}
+        <div className="p-3 bg-purple-50 dark:bg-purple-950/40 rounded-2xl border border-purple-200 dark:border-purple-800/50 flex items-center justify-between gap-3">
+          <div className="flex items-center gap-2">
+            <Volume2 className="w-4 h-4 text-purple-600" />
+            <div>
+              <span className="text-xs font-bold text-purple-900 dark:text-purple-200 block">
+                Hear Voicemail Audio Script
+              </span>
+              <span className="text-[10px] text-purple-700 dark:text-purple-300">
+                Spoken aloud via browser voice synthesis
+              </span>
+            </div>
+          </div>
+          <Button
+            type="button"
+            size="sm"
+            onClick={handlePlayVoicemail}
+            className={`text-xs font-black h-8 px-3 rounded-xl shadow-xs flex items-center gap-1.5 transition-all ${
+              isPlayingSpeech 
+                ? 'bg-rose-600 hover:bg-rose-700 text-white animate-pulse' 
+                : 'bg-purple-600 hover:bg-purple-700 text-white'
+            }`}
+          >
+            <Volume2 className="w-3.5 h-3.5" />
+            <span>{isPlayingSpeech ? 'Stop' : '▶️ Listen to Voicemail'}</span>
+          </Button>
+        </div>
+
+        {/* Live Carrier vs Simulation Status Callout */}
+        {!voiceProvider.isLiveConfigured && (
+          <div className="p-3 bg-amber-50 dark:bg-amber-950/40 rounded-2xl border border-amber-200 dark:border-amber-800/60 text-xs text-amber-900 dark:text-amber-200 flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2">
+              <AlertCircle className="w-4 h-4 text-amber-600 shrink-0" />
+              <span className="text-[11px] leading-tight">
+                Currently in <strong>Simulation Mode</strong>. Voicemail audio plays in browser. To ring your physical phone, connect Twilio.
+              </span>
+            </div>
+            <button
+              type="button"
+              onClick={() => setShowTwilioConfig(true)}
+              className="text-[11px] font-black underline text-primary-700 dark:text-primary-300 shrink-0 hover:text-primary-800"
+            >
+              Setup Twilio
+            </button>
+          </div>
+        )}
 
         {/* Input Fields */}
         <div className="space-y-3">
@@ -249,6 +334,19 @@ export default function OfferAlertModal({
         </div>
 
       </div>
+
+      {/* Twilio Settings & Diagnostics Modal */}
+      {showTwilioConfig && (
+        <TwilioConfigModal
+          isOpen={showTwilioConfig}
+          onClose={() => {
+            setShowTwilioConfig(false);
+            fetchProviderStatus();
+          }}
+          onConfigSaved={fetchProviderStatus}
+        />
+      )}
+
     </div>
   );
 }

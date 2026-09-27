@@ -31,6 +31,7 @@ import { soundEffects } from '../../lib/audio';
 import OfferAlertModal from '../../components/voice/OfferAlertModal';
 import MassBroadcastModal from '../../components/voice/MassBroadcastModal';
 import NotifyUnregisteredModal from '../../components/voice/NotifyUnregisteredModal';
+import TwilioConfigModal from '../../components/voice/TwilioConfigModal';
 
 export default function StaffCampaigns() {
   const navigate = useNavigate();
@@ -38,6 +39,7 @@ export default function StaffCampaigns() {
   const [history, setHistory] = useState([]);
   const [voiceStatus, setVoiceStatus] = useState({ provider: 'Checking...', isLiveConfigured: false });
   const [isLoading, setIsLoading] = useState(true);
+  const [showTwilioConfig, setShowTwilioConfig] = useState(false);
 
   // New Campaign Form Modal
   const [showCreateModal, setShowCreateModal] = useState(false);
@@ -126,17 +128,23 @@ export default function StaffCampaigns() {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-gray-200 dark:border-slate-800 pb-5">
         <div>
           <div className="flex items-center gap-2">
-            <h1 className="text-2xl font-black text-gray-900 dark:text-white flex items-center gap-2">
+            <h1 className="text-xl font-black text-gray-900 dark:text-white flex items-center gap-2">
               <Megaphone className="w-6 h-6 text-amber-500" />
               Promotions &amp; Customer Outreach
             </h1>
-            <span className={`text-[11px] px-2.5 py-0.5 rounded-full font-bold uppercase ${
-              voiceStatus.isLiveConfigured 
-                ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300' 
-                : 'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300'
-            }`}>
-              {voiceStatus.isLiveConfigured ? 'Twilio Live SMS & Voice' : 'Simulation Mode'}
-            </span>
+            <button
+              type="button"
+              onClick={() => setShowTwilioConfig(true)}
+              className={`text-[11px] px-2.5 py-0.5 rounded-full font-bold uppercase flex items-center gap-1 cursor-pointer transition-all hover:scale-105 ${
+                voiceStatus.isLiveConfigured 
+                  ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300' 
+                  : 'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300 border border-amber-300'
+              }`}
+              title="Click to configure live Twilio telephony credentials"
+            >
+              <Settings className="w-3 h-3" />
+              <span>{voiceStatus.isLiveConfigured ? 'Twilio Live SMS & Voice' : 'Simulation Mode'}</span>
+            </button>
           </div>
           <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
             Broadcast promotional deals, flash discounts, and seasonal offers via automated SMS and phone Voicemail.
@@ -151,6 +159,15 @@ export default function StaffCampaigns() {
             className="text-xs font-bold flex items-center gap-1.5"
           >
             <RefreshCw className="w-3.5 h-3.5" /> Refresh
+          </Button>
+
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setShowTwilioConfig(true)}
+            className="text-xs font-bold flex items-center gap-1.5 border-slate-300 dark:border-slate-700"
+          >
+            <Settings className="w-3.5 h-3.5 text-slate-600 dark:text-slate-300" /> Twilio Telephony
           </Button>
 
           <Button
@@ -540,6 +557,18 @@ export default function StaffCampaigns() {
           onClose={() => setShowNotifyModal(false)}
           missingUsers={phoneStats.missingPhoneUsers || []}
           onSuccess={loadData}
+        />
+      )}
+
+      {/* Twilio Telephony Settings & Live Diagnostics Modal */}
+      {showTwilioConfig && (
+        <TwilioConfigModal
+          isOpen={showTwilioConfig}
+          onClose={() => {
+            setShowTwilioConfig(false);
+            loadData();
+          }}
+          onConfigUpdated={loadData}
         />
       )}
 
