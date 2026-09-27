@@ -19,9 +19,11 @@ import {
   Navigation,
   ShieldCheck,
   Layers,
-  Bike
+  Bike,
+  PhoneCall
 } from 'lucide-react';
 import { soundEffects } from '../../lib/audio';
+import VoicemailModal from '../../components/voice/VoicemailModal';
 
 export default function StaffOrders() {
   const { 
@@ -37,6 +39,7 @@ export default function StaffOrders() {
   const [packedChecklist, setPackedChecklist] = useState({});
   const [assigningRiderOrder, setAssigningRiderOrder] = useState(null);
   const [selectedRider, setSelectedRider] = useState(() => deliveryPartners[0] || null);
+  const [voicemailOrder, setVoicemailOrder] = useState(null);
 
   const filteredOrders = orders.filter(o => {
     if (filterType === 'ALL') return true;
@@ -169,6 +172,7 @@ export default function StaffOrders() {
                 onAdvance={() => advanceOrderStatus(order.id)}
                 onOpenPacking={() => handleOpenPacking(order)}
                 onOpenAssignRider={() => handleOpenAssignRider(order)}
+                onOpenVoicemail={() => setVoicemailOrder(order)}
                 onComplete={() => completeOrderImmediately(order.id)}
                 onCancel={() => cancelOrder(order.id)}
               />
@@ -197,6 +201,7 @@ export default function StaffOrders() {
                 onAdvance={() => advanceOrderStatus(order.id)}
                 onOpenPacking={() => handleOpenPacking(order)}
                 onOpenAssignRider={() => handleOpenAssignRider(order)}
+                onOpenVoicemail={() => setVoicemailOrder(order)}
                 onComplete={() => completeOrderImmediately(order.id)}
                 onCancel={() => cancelOrder(order.id)}
               />
@@ -225,6 +230,7 @@ export default function StaffOrders() {
                 onAdvance={() => advanceOrderStatus(order.id)}
                 onOpenPacking={() => handleOpenPacking(order)}
                 onOpenAssignRider={() => handleOpenAssignRider(order)}
+                onOpenVoicemail={() => setVoicemailOrder(order)}
                 onComplete={() => completeOrderImmediately(order.id)}
                 onCancel={() => cancelOrder(order.id)}
               />
@@ -250,6 +256,7 @@ export default function StaffOrders() {
               <StaffOrderCard 
                 key={order.id} 
                 order={order} 
+                onOpenVoicemail={() => setVoicemailOrder(order)}
                 isCompleted={true}
               />
             ))}
@@ -399,6 +406,19 @@ export default function StaffOrders() {
         </div>
       )}
 
+      {/* Automated Twilio Voicemail Modal */}
+      {voicemailOrder && (
+        <VoicemailModal
+          isOpen={!!voicemailOrder}
+          onClose={() => setVoicemailOrder(null)}
+          customerName={voicemailOrder.customerName}
+          customerPhone={voicemailOrder.customerPhone}
+          orderId={voicemailOrder.id}
+          orderStatus={voicemailOrder.status}
+          riderName={voicemailOrder.rider?.name}
+        />
+      )}
+
     </div>
   );
 }
@@ -408,6 +428,7 @@ function StaffOrderCard({
   onAdvance, 
   onOpenPacking, 
   onOpenAssignRider, 
+  onOpenVoicemail,
   onComplete, 
   onCancel, 
   isCompleted = false 
@@ -430,8 +451,19 @@ function StaffOrderCard({
 
       {/* Customer details */}
       <div className="text-xs space-y-1">
-        <div className="font-bold text-gray-900 flex items-center gap-1.5">
-          <User className="w-3.5 h-3.5 text-gray-400" /> {order.customerName}
+        <div className="font-bold text-gray-900 flex items-center justify-between">
+          <span className="flex items-center gap-1.5 truncate">
+            <User className="w-3.5 h-3.5 text-gray-400" /> {order.customerName}
+          </span>
+          {order.customerPhone && onOpenVoicemail && (
+            <button
+              onClick={() => onOpenVoicemail(order)}
+              className="px-2 py-0.5 rounded-lg bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold text-[10px] flex items-center gap-1 transition-colors border border-indigo-200/60"
+              title="Send Automated Voicemail via Twilio Voice API"
+            >
+              <PhoneCall className="w-2.5 h-2.5" /> Voicemail
+            </button>
+          )}
         </div>
         <div className="text-gray-500 text-[11px] truncate flex items-center gap-1.5">
           <Phone className="w-3 h-3 text-gray-400" /> {order.customerPhone}

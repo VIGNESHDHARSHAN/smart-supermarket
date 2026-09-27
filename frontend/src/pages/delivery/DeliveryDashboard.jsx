@@ -18,10 +18,12 @@ import {
   TrendingUp,
   Star,
   Store,
-  ChevronRight
+  ChevronRight,
+  PhoneCall
 } from 'lucide-react';
 import { Button } from '../../components/ui/Button';
 import { useSupermarket } from '../../context/SupermarketContext';
+import VoicemailModal from '../../components/voice/VoicemailModal';
 
 export default function DeliveryDashboard() {
   const navigate = useNavigate();
@@ -37,6 +39,7 @@ export default function DeliveryDashboard() {
   const [otpInput, setOtpInput] = useState('');
   const [errorMessage, setErrorMessage] = useState('');
   const [successMessage, setSuccessMessage] = useState('');
+  const [showVoicemailModal, setShowVoicemailModal] = useState(false);
 
   if (!currentDeliveryPartner) {
     navigate('/delivery/login', { replace: true });
@@ -241,12 +244,22 @@ export default function DeliveryDashboard() {
                     <div className="text-sm font-bold text-white">{activeOrder.customerName}</div>
                     <div className="text-xs text-gray-400 font-mono">{activeOrder.customerPhone}</div>
                   </div>
-                  <a
-                    href={`tel:${activeOrder.customerPhone}`}
-                    className="px-3 py-2 bg-emerald-500 hover:bg-emerald-600 text-slate-950 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-colors"
-                  >
-                    <Phone className="w-3.5 h-3.5" /> Call Customer
-                  </a>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setShowVoicemailModal(true)}
+                      className="px-3 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 transition-colors shadow-xs"
+                      title="Send automated voicemail via Twilio Voice API"
+                    >
+                      <PhoneCall className="w-3.5 h-3.5" /> Voicemail
+                    </button>
+                    <a
+                      href={`tel:${activeOrder.customerPhone}`}
+                      className="px-3 py-2 bg-emerald-500 hover:bg-emerald-600 text-slate-950 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-colors"
+                    >
+                      <Phone className="w-3.5 h-3.5" /> Call
+                    </a>
+                  </div>
                 </div>
               </div>
             </div>
@@ -387,6 +400,19 @@ export default function DeliveryDashboard() {
           )}
         </div>
       </main>
+
+      {/* Automated Voicemail Modal for Active Delivery */}
+      {activeOrder && showVoicemailModal && (
+        <VoicemailModal
+          isOpen={showVoicemailModal}
+          onClose={() => setShowVoicemailModal(false)}
+          customerName={activeOrder.customerName}
+          customerPhone={activeOrder.customerPhone}
+          orderId={activeOrder.id}
+          orderStatus={activeOrder.status}
+          riderName={currentDeliveryPartner.name}
+        />
+      )}
     </div>
   );
 }
