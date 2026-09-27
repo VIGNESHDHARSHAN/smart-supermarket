@@ -98,4 +98,40 @@ router.post('/google', async (req, res) => {
   }
 });
 
+// Update customer phone number and credit loyalty points
+router.patch('/phone', async (req, res) => {
+  try {
+    const { userId, email, phone } = req.body;
+    if (!phone) {
+      return res.status(400).json({ error: 'Phone number is required' });
+    }
+
+    const cleanPhone = phone.trim();
+    let query = {};
+    if (userId) query.$or = [{ id: userId }, { _id: userId }];
+    if (email) {
+      if (!query.$or) query.$or = [];
+      query.$or.push({ email: email.toLowerCase().trim() });
+    }
+
+    const updatedUser = await User.findOneAndUpdate(
+      query,
+      { 
+        $set: { phone: cleanPhone },
+        $inc: { loyaltyPoints: 50 } // Reward user with 50 bonus loyalty points for registering mobile number
+      },
+      { new: true }
+    );
+
+    res.json({
+      success: true,
+      message: 'Phone number registered successfully! +50 SmartMart points awarded.',
+      user: updatedUser
+    });
+  } catch (err) {
+    console.error('Error updating phone number:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 module.exports = router;

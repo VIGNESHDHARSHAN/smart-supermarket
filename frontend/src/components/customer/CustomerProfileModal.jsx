@@ -118,8 +118,30 @@ export default function CustomerProfileModal({ isOpen, onClose }) {
                   <div className="font-bold text-gray-900 dark:text-white text-sm">{currentUser.name}</div>
                 </div>
                 <div>
-                  <label className="text-[10px] font-bold text-gray-400 uppercase">Primary Mobile Number</label>
-                  <div className="font-medium text-gray-800 dark:text-gray-200">{currentUser.phone || '+91 98451 23456'}</div>
+                  <div className="flex items-center justify-between">
+                    <label className="text-[10px] font-bold text-gray-400 uppercase">Primary Mobile Number</label>
+                    {(!currentUser.phone || currentUser.phone.trim() === '' || currentUser.phone.includes('00000')) && (
+                      <span className="text-[10px] font-black text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/60 px-2 py-0.5 rounded-full border border-amber-200 dark:border-amber-800">
+                        ⚠️ Missing Mobile • +50 Pts
+                      </span>
+                    )}
+                  </div>
+                  <div className="flex items-center justify-between mt-1">
+                    <div className={`font-medium ${currentUser.phone && !currentUser.phone.includes('00000') ? 'text-gray-800 dark:text-gray-200' : 'text-amber-600 dark:text-amber-400 font-bold'}`}>
+                      {currentUser.phone && !currentUser.phone.includes('00000') ? currentUser.phone : 'Not registered yet'}
+                    </div>
+                    {(!currentUser.phone || currentUser.phone.trim() === '' || currentUser.phone.includes('00000')) && (
+                      <button
+                        onClick={() => {
+                          onClose();
+                          navigate('/customer/settings');
+                        }}
+                        className="text-xs font-black text-primary-600 hover:text-primary-700 dark:text-primary-400 hover:underline"
+                      >
+                        Link Number →
+                      </button>
+                    )}
+                  </div>
                 </div>
                 <div>
                   <label className="text-[10px] font-bold text-gray-400 uppercase">Default Delivery Address</label>

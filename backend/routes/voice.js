@@ -722,5 +722,93 @@ router.post('/broadcast-all', async (req, res) => {
   }
 });
 
+// System notification state for users missing phone numbers
+let systemNotification = {
+  active: true,
+  type: 'PHONE_REGISTRATION_PROMPT',
+  title: '🎁 Exclusive 30% OFF Deal: Link Your Mobile Number!',
+  message: 'Register your mobile number to receive automated Voicemail coupons, 30% OFF flash discounts, and live delivery SMS. Plus get 50 bonus SmartMart points!',
+  bonusPoints: 50,
+  updatedAt: new Date().toISOString()
+};
+
+/**
+ * GET /api/voice/phone-stats
+ * Returns statistics of customers with phone numbers vs without phone numbers
+ */
+router.get('/phone-stats', async (req, res) => {
+  try {
+    let allUsers = [];
+    try {
+      allUsers = await User.find({ role: 'CUSTOMER' }).lean();
+    } catch (e) {}
+
+    const registered = [];
+    const missing = [];
+
+    allUsers.forEach(u => {
+      const hasPhone = u.phone && u.phone.trim().length >= 8 && !u.phone.includes('00000');
+      if (hasPhone) {
+        registered.push({ id: u.id || u._id, name: u.name, email: u.email, phone: u.phone });
+      } else {
+        missing.push({ id: u.id || u._id, name: u.name, email: u.email });
+      }
+    });
+
+    if (allUsers.length === 0) {
+      registered.push({ id: 'u1', name: 'Ananya Iyer', phone: '+919876500000' });
+      missing.push({ id: 'u2', name: 'Guest Shopper', email: 'guest@smartmart.com' });
+      missing.push({ id: 'u3', name: 'Google Shopper', email: 'google.user@gmail.com' });
+    }
+
+    res.json({
+      success: true,
+      registeredCount: registered.length,
+      missingPhoneCount: missing.length,
+      registeredUsers: registered,
+      missingPhoneUsers: missing,
+      notification: systemNotification
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/**
+ * POST /api/voice/notify-unregistered-users
+ * Triggers an in-app notification prompt for all users who haven't registered phone numbers
+ */
+router.post('/notify-unregistered-users', (req, res) => {
+  const { title, message, bonusPoints } = req.body || {};
+  systemNotification = {
+    active: true,
+    type: 'PHONE_REGISTRATION_PROMPT',
+    title: title || '🎁 Exclusive 30% OFF Voicemail & SMS Deals: Link Your Mobile Number!',
+    message: message || 'Link your mobile number to receive automated Voicemail discounts and SMS delivery alerts. Earn +50 bonus SmartMart Points instantly!',
+    bonusPoints: Number(bonusPoints) || 50,
+    triggeredAt: new Date().toISOString()
+  };
+
+  console.log('[System Broadcast] Notification triggered for users missing phone numbers:', systemNotification.title);
+
+  res.json({
+    success: true,
+    message: 'In-app notification prompt triggered for all users without phone numbers!',
+    notification: systemNotification
+  });
+});
+
+/**
+ * GET /api/voice/system-notifications
+ * Returns active system prompts for frontend consumers
+ */
+router.get('/system-notifications', (req, res) => {
+  res.json({
+    success: true,
+    notification: systemNotification
+  });
+});
+
 module.exports = router;
+
 

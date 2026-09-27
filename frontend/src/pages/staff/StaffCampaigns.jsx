@@ -14,18 +14,21 @@ import {
   ShieldCheck, 
   Settings,
   AlertCircle,
-  Users
+  Users,
+  Bell
 } from 'lucide-react';
 import { Button } from '../../components/ui/Button';
 import { 
   apiGetOfferCampaigns, 
   apiCreateOfferCampaign, 
   apiGetDispatchHistory, 
-  apiGetVoiceStatus 
+  apiGetVoiceStatus,
+  apiGetPhoneStats 
 } from '../../services/api';
 import { soundEffects } from '../../lib/audio';
 import OfferAlertModal from '../../components/voice/OfferAlertModal';
 import MassBroadcastModal from '../../components/voice/MassBroadcastModal';
+import NotifyUnregisteredModal from '../../components/voice/NotifyUnregisteredModal';
 
 export default function StaffCampaigns() {
   const [campaigns, setCampaigns] = useState([]);
@@ -48,17 +51,27 @@ export default function StaffCampaigns() {
   const [showMassBroadcastModal, setShowMassBroadcastModal] = useState(false);
   const [massBroadcastOffer, setMassBroadcastOffer] = useState(null);
 
+  // Phone Stats & Unregistered Users Notification
+  const [phoneStats, setPhoneStats] = useState({
+    registeredCount: 0,
+    missingPhoneCount: 0,
+    missingPhoneUsers: []
+  });
+  const [showNotifyModal, setShowNotifyModal] = useState(false);
+
   const loadData = async () => {
     setIsLoading(true);
     try {
-      const [cList, hList, status] = await Promise.all([
+      const [cList, hList, status, pStats] = await Promise.all([
         apiGetOfferCampaigns(),
         apiGetDispatchHistory(),
-        apiGetVoiceStatus()
+        apiGetVoiceStatus(),
+        apiGetPhoneStats()
       ]);
       setCampaigns(cList || []);
       setHistory(hList || []);
       setVoiceStatus(status || {});
+      if (pStats) setPhoneStats(pStats);
     } catch (err) {
       console.warn('Error loading campaigns:', err);
     } finally {
@@ -154,6 +167,57 @@ export default function StaffCampaigns() {
             className="bg-primary-600 hover:bg-primary-700 text-white font-black text-xs shadow-md flex items-center gap-1.5"
           >
             <Users className="w-4 h-4" /> Blast to All Customers
+          </Button>
+
+          <Button
+            size="sm"
+            onClick={() => setShowNotifyModal(true)}
+            className="bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white font-black text-xs shadow-md flex items-center gap-1.5"
+          >
+            <Bell className="w-4 h-4 text-amber-300" /> Notify Users Without Phone
+          </Button>
+        </div>
+      </div>
+
+      {/* Customer Mobile Numbers & Outreach Readiness Hub */}
+      <div className="bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 text-white rounded-3xl p-5 border border-indigo-800/50 shadow-xl flex flex-col md:flex-row md:items-center justify-between gap-5">
+        <div className="flex items-start sm:items-center gap-4">
+          <div className="p-3.5 rounded-2xl bg-indigo-500/20 text-indigo-400 border border-indigo-500/30 shrink-0">
+            <Bell className="w-6 h-6 animate-pulse text-amber-400" />
+          </div>
+          <div>
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="text-[10px] font-black uppercase tracking-wider bg-amber-400 text-slate-950 px-2 py-0.5 rounded-full">
+                Outreach Readiness
+              </span>
+              <h3 className="text-base font-extrabold text-white">
+                Customer Mobile Registration &amp; Prompt Hub
+              </h3>
+            </div>
+            <p className="text-xs text-indigo-200/80 mt-1 max-w-xl leading-relaxed">
+              Customers registered via Google or email without a mobile number cannot receive automated Voicemail discounts or SMS alerts. Trigger an interactive in-app notification offering +50 loyalty points to onboard their phone!
+            </p>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-3 shrink-0 flex-wrap sm:flex-nowrap">
+          <div className="bg-indigo-900/50 border border-indigo-700/60 rounded-2xl px-4 py-2 text-center min-w-[100px]">
+            <span className="text-[10px] font-bold text-emerald-400 block uppercase">Ready (Phone)</span>
+            <span className="text-lg font-black font-mono text-white">{phoneStats.registeredCount || 0}</span>
+          </div>
+
+          <div className="bg-amber-500/20 border border-amber-500/40 rounded-2xl px-4 py-2 text-center min-w-[100px]">
+            <span className="text-[10px] font-bold text-amber-400 block uppercase">Missing Phone</span>
+            <span className="text-lg font-black font-mono text-amber-300">{phoneStats.missingPhoneCount || 0}</span>
+          </div>
+
+          <Button
+            size="sm"
+            onClick={() => setShowNotifyModal(true)}
+            className="bg-amber-400 hover:bg-amber-500 text-slate-950 font-black text-xs h-11 px-4 rounded-xl shadow-lg flex items-center gap-2 whitespace-nowrap"
+          >
+            <Bell className="w-4 h-4" />
+            <span>Notify Unregistered Users</span>
           </Button>
         </div>
       </div>
@@ -454,6 +518,16 @@ export default function StaffCampaigns() {
           preselectedOffer={massBroadcastOffer}
           campaigns={campaigns}
           onBroadcastSuccess={loadData}
+        />
+      )}
+
+      {/* Notify Customers Missing Phone Numbers Modal */}
+      {showNotifyModal && (
+        <NotifyUnregisteredModal
+          isOpen={showNotifyModal}
+          onClose={() => setShowNotifyModal(false)}
+          missingUsers={phoneStats.missingPhoneUsers || []}
+          onSuccess={loadData}
         />
       )}
 

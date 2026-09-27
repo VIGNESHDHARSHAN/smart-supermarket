@@ -25,12 +25,14 @@ import {
   Send,
   Plus,
   PhoneCall,
-  MessageSquare
+  MessageSquare,
+  Bell
 } from 'lucide-react';
 import { AvailabilityBadge } from '../../components/ui/Badge';
 import { Button } from '../../components/ui/Button';
 import MassBroadcastModal from '../../components/voice/MassBroadcastModal';
-import { apiGetOfferCampaigns, apiCreateOfferCampaign } from '../../services/api';
+import NotifyUnregisteredModal from '../../components/voice/NotifyUnregisteredModal';
+import { apiGetOfferCampaigns, apiCreateOfferCampaign, apiGetPhoneStats } from '../../services/api';
 import { soundEffects } from '../../lib/audio';
 
 export default function Dashboard() {
@@ -50,11 +52,15 @@ export default function Dashboard() {
   const [offerDiscount, setOfferDiscount] = useState('25');
   const [offerCategory, setOfferCategory] = useState('Storewide Essentials');
   const [offerDesc, setOfferDesc] = useState('');
-  const [isSubmittingOffer, setIsSubmittingOffer] = useState(false);
+  const [phoneStats, setPhoneStats] = useState({ registeredCount: 0, missingPhoneCount: 0, missingPhoneUsers: [] });
+  const [showNotifyModal, setShowNotifyModal] = useState(false);
 
   React.useEffect(() => {
     apiGetOfferCampaigns().then(data => {
       if (data && data.length > 0) setCampaigns(data);
+    });
+    apiGetPhoneStats().then(stats => {
+      if (stats) setPhoneStats(stats);
     });
   }, []);
 
@@ -268,16 +274,16 @@ export default function Dashboard() {
                 Marketing Control Hub
               </span>
               <h3 className="font-extrabold text-sm text-gray-950 dark:text-white">
-                Offers, Discounts &amp; Mass Customer Voice / SMS Blast
+                Offers, Discounts &amp; Customer Outreach
               </h3>
             </div>
             <p className="text-xs text-gray-600 dark:text-gray-300 mt-0.5">
-              Create flash discounts &amp; coupons and broadcast simultaneously to all registered customer phone numbers via automated Voicemail &amp; SMS.
+              Broadcast promotional deals via Voicemail &amp; SMS. Ready phones: <strong>{phoneStats.registeredCount || 0}</strong> • Missing phone: <strong className="text-amber-600 dark:text-amber-400">{phoneStats.missingPhoneCount || 0}</strong>
             </p>
           </div>
         </div>
 
-        <div className="flex items-center gap-2.5">
+        <div className="flex flex-wrap items-center gap-2.5">
           <Button
             size="sm"
             variant="outline"
@@ -285,6 +291,15 @@ export default function Dashboard() {
             onClick={() => setShowCreateOfferModal(true)}
           >
             <Plus className="w-3.5 h-3.5 mr-1" /> Add New Offer
+          </Button>
+
+          <Button
+            size="sm"
+            onClick={() => setShowNotifyModal(true)}
+            className="bg-purple-600 hover:bg-purple-700 text-white font-black text-xs h-9 px-3.5 shadow-md flex items-center gap-1.5"
+            title="Prompt all users missing phone numbers to link their mobile"
+          >
+            <Bell className="w-3.5 h-3.5 text-amber-300" /> Notify Unregistered ({phoneStats.missingPhoneCount || 0})
           </Button>
 
           <Button
@@ -539,6 +554,20 @@ export default function Dashboard() {
           onBroadcastSuccess={() => {
             apiGetOfferCampaigns().then(data => {
               if (data) setCampaigns(data);
+            });
+          }}
+        />
+      )}
+
+      {/* Notify Unregistered Users Modal */}
+      {showNotifyModal && (
+        <NotifyUnregisteredModal
+          isOpen={showNotifyModal}
+          onClose={() => setShowNotifyModal(false)}
+          missingUsers={phoneStats.missingPhoneUsers || []}
+          onSuccess={() => {
+            apiGetPhoneStats().then(stats => {
+              if (stats) setPhoneStats(stats);
             });
           }}
         />

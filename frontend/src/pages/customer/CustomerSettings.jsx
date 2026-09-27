@@ -31,6 +31,7 @@ import { useTheme } from '../../context/ThemeContext';
 import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
 import { soundEffects } from '../../lib/audio';
+import { apiUpdateCustomerPhone } from '../../services/api';
 
 export default function CustomerSettings() {
   const navigate = useNavigate();
@@ -87,9 +88,15 @@ export default function CustomerSettings() {
       savedAddresses: addresses
     };
     loginCustomer(updatedUser);
+    
+    // Sync with MongoDB backend and credit loyalty points if newly registered
+    if (profilePhone && profilePhone.trim()) {
+      apiUpdateCustomerPhone(currentUser?.id, currentUser?.email || profileEmail, profilePhone.trim()).catch(() => {});
+    }
+
     soundEffects.playSuccessChime();
-    setSavedSuccessMsg('Profile updated successfully!');
-    setTimeout(() => setSavedSuccessMsg(''), 3000);
+    setSavedSuccessMsg('Profile updated successfully! Mobile preferences synced.');
+    setTimeout(() => setSavedSuccessMsg(''), 3500);
   };
 
   const handleAddNewAddress = (e) => {
@@ -304,15 +311,24 @@ export default function CustomerSettings() {
                 </div>
 
                 <div>
-                  <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-1.5 uppercase tracking-wider">
-                    Phone Number
-                  </label>
+                  <div className="flex items-center justify-between mb-1.5">
+                    <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wider">
+                      Phone Number
+                    </label>
+                    <span className="text-[10px] font-black text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/60 px-2 py-0.5 rounded-full border border-amber-200 dark:border-amber-800">
+                      🎁 +50 Pts &amp; Voicemail Deals
+                    </span>
+                  </div>
                   <Input 
                     type="tel" 
                     value={profilePhone} 
                     onChange={(e) => setProfilePhone(e.target.value)} 
+                    placeholder="+91 98451 23456"
                     required 
                   />
+                  <p className="text-[10px] text-gray-500 dark:text-gray-400 mt-1">
+                    Used for automated voice mail coupons, SMS delivery tracking, and flash deals.
+                  </p>
                 </div>
 
                 <div className="sm:col-span-2">

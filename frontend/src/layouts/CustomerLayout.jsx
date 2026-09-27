@@ -28,6 +28,7 @@ import { cn } from '../lib/utils';
 import CustomerProfileModal from '../components/customer/CustomerProfileModal';
 import StoreAisleMapModal from '../components/customer/StoreAisleMapModal';
 import AIChatbotModal from '../components/customer/AIChatbotModal';
+import PhoneRegistrationBanner from '../components/customer/PhoneRegistrationBanner';
 
 export default function CustomerLayout() {
   const location = useLocation();
@@ -414,6 +415,9 @@ export default function CustomerLayout() {
           })}
         </div>
       </header>
+
+      {/* Phone Registration & Outreach Prompt Banner for Unregistered Users */}
+      <PhoneRegistrationBanner />
 
       {/* Store Closed Banner */}
       {!isStoreOpen && (
