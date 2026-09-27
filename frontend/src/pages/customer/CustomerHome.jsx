@@ -17,12 +17,18 @@ import {
   Clock,
   ArrowRight,
   Bot,
-  Utensils
+  Utensils,
+  Megaphone,
+  Tag,
+  PhoneCall,
+  MessageSquare
 } from 'lucide-react';
 import { Button } from '../../components/ui/Button';
 import { AvailabilityBadge } from '../../components/ui/Badge';
 import { ProductImage } from '../../components/ui/ProductImage';
 import StoreAisleMapModal from '../../components/customer/StoreAisleMapModal';
+import OfferAlertModal from '../../components/voice/OfferAlertModal';
+import { apiGetOfferCampaigns } from '../../services/api';
 
 export default function CustomerHome() {
   const navigate = useNavigate();
@@ -40,6 +46,14 @@ export default function CustomerHome() {
   const [searchQuery, setSearchQuery] = useState('');
   const [mapModalProduct, setMapModalProduct] = useState(null);
   const [addedRecipeId, setAddedRecipeId] = useState(null);
+  const [offers, setOffers] = useState([]);
+  const [alertOffer, setAlertOffer] = useState(null);
+
+  React.useEffect(() => {
+    apiGetOfferCampaigns().then(data => {
+      if (data && data.length > 0) setOffers(data);
+    });
+  }, []);
 
 
   const categories = [
@@ -357,6 +371,72 @@ export default function CustomerHome() {
         </div>
       </section>
 
+      {/* Supermarket Offers with SMS & Voicemail Broadcast */}
+      {offers && offers.length > 0 && (
+        <section className="space-y-4">
+          <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-2">
+            <div>
+              <div className="inline-flex items-center gap-1.5 bg-amber-100 dark:bg-amber-950/60 text-amber-800 dark:text-amber-300 text-[11px] font-bold px-2.5 py-0.5 rounded-full mb-1">
+                <Sparkles className="w-3.5 h-3.5" />
+                <span>Special Flash Deals & Coupons</span>
+              </div>
+              <h2 className="text-2xl font-black text-gray-900 dark:text-white tracking-tight">
+                Hot Supermarket Offers &amp; Discounts
+              </h2>
+              <p className="text-xs text-gray-500 dark:text-gray-400">
+                Receive promotional coupons sent directly to your phone via SMS text &amp; automated Voicemail!
+              </p>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+            {offers.map(offer => (
+              <div 
+                key={offer.id}
+                className="p-5 rounded-3xl bg-linear-to-br from-amber-500/10 via-orange-500/5 to-rose-500/10 border border-amber-200/80 dark:border-amber-800/40 shadow-xs hover:shadow-lg transition-all flex flex-col justify-between space-y-4 group relative overflow-hidden"
+              >
+                <div className="space-y-2.5">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-white dark:bg-slate-800 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-slate-700 font-mono">
+                      {offer.category || 'Special Promo'}
+                    </span>
+                    <span className="px-2.5 py-0.5 rounded-full bg-amber-500 text-slate-950 font-black text-xs font-mono shadow-xs">
+                      {offer.discountPercent}% OFF
+                    </span>
+                  </div>
+
+                  <div>
+                    <h3 className="font-black text-base text-gray-900 dark:text-white leading-snug">
+                      {offer.title}
+                    </h3>
+                    <p className="text-xs text-gray-600 dark:text-gray-300 mt-1 line-clamp-2 leading-relaxed">
+                      {offer.description}
+                    </p>
+                  </div>
+
+                  <div className="p-2.5 bg-white dark:bg-slate-800 rounded-2xl border border-gray-200/70 dark:border-slate-700 flex items-center justify-between">
+                    <span className="text-[11px] text-gray-400 font-medium">Coupon Code:</span>
+                    <span className="font-mono font-black text-xs text-primary-600 dark:text-primary-400 tracking-wider">
+                      {offer.promoCode}
+                    </span>
+                  </div>
+                </div>
+
+                <div className="space-y-2 pt-1 border-t border-amber-200/40 dark:border-slate-800">
+                  <Button
+                    onClick={() => setAlertOffer(offer)}
+                    className="w-full h-10 bg-amber-500 hover:bg-amber-600 text-slate-950 font-black text-xs shadow-md flex items-center justify-center gap-2 group-hover:scale-[1.02] transition-transform"
+                  >
+                    <PhoneCall className="w-3.5 h-3.5" />
+                    <span>Send Deal via SMS &amp; Voicemail</span>
+                  </Button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
+
       {/* Featured Products with 1-Click Cart Addition */}
       <section className="space-y-4">
         <div className="flex justify-between items-end">
@@ -579,6 +659,17 @@ export default function CustomerHome() {
         onClose={() => setMapModalProduct(null)}
         selectedProduct={mapModalProduct}
       />
+
+      {/* Promotional Offer Alert Modal (SMS & Voicemail) */}
+      {alertOffer && (
+        <OfferAlertModal
+          isOpen={!!alertOffer}
+          onClose={() => setAlertOffer(null)}
+          offer={alertOffer}
+          defaultPhone={currentUser?.phone || '+91 98765 00000'}
+          defaultName={currentUser?.name || 'Customer'}
+        />
+      )}
 
     </div>
   );

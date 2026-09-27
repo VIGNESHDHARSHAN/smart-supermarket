@@ -1,6 +1,71 @@
 const express = require('express');
 const router = express.Router();
 
+// In-memory campaign and dispatch activity store (backed by server runtime)
+let activeCampaigns = [
+  {
+    id: 'CMP-101',
+    title: 'Weekend Fresh Harvest 30% OFF',
+    promoCode: 'FRESH30',
+    discountPercent: 30,
+    category: 'Fruits & Vegetables',
+    description: 'Flat 30% off on all organic farm-fresh greens, seasonal fruits, and exotic vegetables.',
+    validTill: 'This Sunday Midnight',
+    active: true,
+    totalDispatched: 142,
+    createdAt: new Date().toISOString()
+  },
+  {
+    id: 'CMP-102',
+    title: 'Super Saver ₹100 Flat Discount',
+    promoCode: 'MART100',
+    discountPercent: 20,
+    category: 'Storewide Essentials',
+    description: 'Flat ₹100 instant cashback on any grocery cart above ₹499 with express 15-min delivery.',
+    validTill: 'Valid all month',
+    active: true,
+    totalDispatched: 89,
+    createdAt: new Date().toISOString()
+  },
+  {
+    id: 'CMP-103',
+    title: 'Festival Sweets & Dry Fruits 25% OFF',
+    promoCode: 'FESTIVE25',
+    discountPercent: 25,
+    category: 'Snacks & Beverages',
+    description: 'Special festive gift boxes, premium almonds, cashews, and artisan confectioneries.',
+    validTill: 'Limited stock',
+    active: true,
+    totalDispatched: 64,
+    createdAt: new Date().toISOString()
+  }
+];
+
+let dispatchHistory = [
+  {
+    id: 'DISP-001',
+    type: 'SMS',
+    recipient: '+919876500000',
+    customerName: 'Ananya Iyer',
+    title: 'Weekend Fresh Harvest 30% OFF',
+    status: 'DELIVERED',
+    provider: 'Twilio SMS',
+    sid: 'SM_SIM_101',
+    timestamp: new Date(Date.now() - 3600000).toISOString()
+  },
+  {
+    id: 'DISP-002',
+    type: 'VOICEMAIL',
+    recipient: '+919876500000',
+    customerName: 'Ananya Iyer',
+    title: 'Order ORD-10294 Out For Delivery',
+    status: 'COMPLETED',
+    provider: 'Twilio Voice',
+    sid: 'CA_SIM_102',
+    timestamp: new Date(Date.now() - 1800000).toISOString()
+  }
+];
+
 /**
  * Format phone number to E.164 standard (e.g., +919876543210)
  */
@@ -14,16 +79,45 @@ function formatE164(phone, defaultCountry = '+91') {
 }
 
 /**
- * Build dynamic speech message based on order context
+ * Check if Twilio is properly configured with live keys
  */
-function buildVoicemailScript({ customerName = 'Customer', orderId = 'ORD-00000', orderStatus = 'CONFIRMED', customMessage = '' }) {
+function getTwilioClient() {
+  const accountSid = process.env.TWILIO_ACCOUNT_SID;
+  const authToken = process.env.TWILIO_AUTH_TOKEN;
+  const fromPhone = process.env.TWILIO_PHONE_NUMBER;
+
+  const isConfigured = !!(accountSid && authToken && fromPhone && !accountSid.includes('your_') && accountSid.startsWith('AC'));
+
+  if (isConfigured) {
+    const twilio = require('twilio');
+    return {
+      client: twilio(accountSid, authToken),
+      fromPhone,
+      isLive: true
+    };
+  }
+  return { client: null, fromPhone: '+10000000000', isLive: false };
+}
+
+/**
+ * Build speech text for voicemail
+ */
+function buildVoicemailScript({ customerName = 'Customer', orderId = '', orderStatus = '', customMessage = '', offerTitle = '', promoCode = '', discount = '' }) {
   if (customMessage && customMessage.trim().length > 0) {
     return customMessage.trim();
   }
 
   const cleanName = customerName || 'Valued Customer';
-  const cleanId = orderId ? orderId.replace('-', ' ') : 'your order';
 
+  // 1. Promotional Offer Voicemail Script
+  if (offerTitle) {
+    const discountText = discount ? `with an exclusive ${discount}% discount` : 'with special savings';
+    const codeText = promoCode ? `Use code ${promoCode} at checkout.` : '';
+    return `Hello ${cleanName}, this is SmartMart Supermarket with an exciting announcement! ${offerTitle} is now live ${discountText}. ${codeText} Order online with fifteen-minute doorstep delivery or visit our express store. Thank you and have a wonderful day!`;
+  }
+
+  // 2. Order Tracking Voicemail Script
+  const cleanId = orderId ? orderId.replace('-', ' ') : 'your order';
   switch (orderStatus) {
     case 'CONFIRMED':
     case 'PACKING':
@@ -41,6 +135,102 @@ function buildVoicemailScript({ customerName = 'Customer', orderId = 'ORD-00000'
 }
 
 /**
+ * POST /api/voice/send-sms
+ * Sends an automated SMS to customer with promotional offer or order update
+ */
+router.post('/send-sms', async (req, res) => {
+  try {
+    const {
+      to,
+      customerName = 'Valued Customer',
+      messageText = '',
+      offerTitle = '',
+      promoCode = '',
+      discountPercent = 0
+    } = req.body;
+
+    if (!to) {
+      return res.status(400).json({ error: 'Recipient phone number (to) is required.' });
+    }
+
+    const formattedTo = formatE164(to);
+    let finalBody = messageText;
+
+    if (!finalBody && offerTitle) {
+      finalBody = `🎉 SmartMart Offer: ${offerTitle}! Get ${discountPercent}% OFF. Use code ${promoCode || 'DEAL'} at checkout. Shop 15-min delivery: https://smartmart.store`;
+    } else if (!finalBody) {
+      finalBody = `🛒 SmartMart Supermarket: Hello ${customerName}, your fresh groceries order has been updated. Track live in your SmartMart app.`;
+    }
+
+    const { client, fromPhone, isLive } = getTwilioClient();
+
+    if (isLive) {
+      const msg = await client.messages.create({
+        to: formattedTo,
+        from: fromPhone,
+        body: finalBody
+      });
+
+      console.log(`[Twilio SMS] Message sent to ${formattedTo}. SID: ${msg.sid}`);
+
+      const record = {
+        id: `DISP-${Date.now().toString().slice(-4)}`,
+        type: 'SMS',
+        recipient: formattedTo,
+        customerName,
+        title: offerTitle || 'SMS Notification',
+        status: msg.status || 'SENT',
+        provider: 'Twilio Live SMS',
+        sid: msg.sid,
+        timestamp: new Date().toISOString()
+      };
+      dispatchHistory.unshift(record);
+
+      return res.status(200).json({
+        success: true,
+        mode: 'twilio_live',
+        sid: msg.sid,
+        recipient: formattedTo,
+        body: finalBody,
+        message: `SMS successfully delivered to ${formattedTo} via Twilio.`
+      });
+    } else {
+      // Simulation mode
+      const mockSid = `SM_SIM_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+      console.log(`[SMS Simulation] To: ${formattedTo} | Content: "${finalBody}"`);
+
+      const record = {
+        id: `DISP-${Date.now().toString().slice(-4)}`,
+        type: 'SMS',
+        recipient: formattedTo,
+        customerName,
+        title: offerTitle || 'SMS Notification',
+        status: 'DELIVERED (SIMULATED)',
+        provider: 'Simulation Mode',
+        sid: mockSid,
+        timestamp: new Date().toISOString()
+      };
+      dispatchHistory.unshift(record);
+
+      return res.status(200).json({
+        success: true,
+        mode: 'simulated',
+        sid: mockSid,
+        recipient: formattedTo,
+        body: finalBody,
+        message: `[Simulation Mode] SMS dispatched to ${formattedTo}. Add Twilio credentials in backend/.env for real network SMS.`
+      });
+    }
+  } catch (error) {
+    console.error('Error in /api/voice/send-sms:', error);
+    return res.status(500).json({
+      error: error.message || 'Failed to dispatch SMS',
+      details: error.code ? `Twilio Code: ${error.code}` : undefined
+    });
+  }
+});
+
+/**
  * POST /api/voice/send-voicemail
  * Initiates an automated voice phone call / voicemail to the customer's phone number
  */
@@ -52,7 +242,10 @@ router.post('/send-voicemail', async (req, res) => {
       orderId = '',
       orderStatus = 'OUT_FOR_DELIVERY',
       messageText = '',
-      voice = 'Polly.Aditi', // Amazon Polly Indian English voice
+      offerTitle = '',
+      promoCode = '',
+      discountPercent = '',
+      voice = 'Polly.Aditi',
       language = 'en-IN'
     } = req.body;
 
@@ -67,21 +260,15 @@ router.post('/send-voicemail', async (req, res) => {
       customerName,
       orderId,
       orderStatus,
-      customMessage: messageText
+      customMessage: messageText,
+      offerTitle,
+      promoCode,
+      discount: discountPercent
     });
 
-    const accountSid = process.env.TWILIO_ACCOUNT_SID;
-    const authToken = process.env.TWILIO_AUTH_TOKEN;
-    const fromPhone = process.env.TWILIO_PHONE_NUMBER;
+    const { client, fromPhone, isLive } = getTwilioClient();
 
-    const isTwilioConfigured = !!(accountSid && authToken && fromPhone && !accountSid.includes('your_'));
-
-    if (isTwilioConfigured) {
-      // Live Twilio Outbound Voice Call Execution
-      const twilio = require('twilio');
-      const client = twilio(accountSid, authToken);
-
-      // Escape XML entities in speech text
+    if (isLive) {
       const escapedText = spokenText
         .replace(/&/g, '&amp;')
         .replace(/</g, '&lt;')
@@ -89,7 +276,6 @@ router.post('/send-voicemail', async (req, res) => {
         .replace(/"/g, '&quot;')
         .replace(/'/g, '&apos;');
 
-      // TwiML with pause, greeting, message, and repeat if needed
       const twiml = `
         <Response>
           <Pause length="1"/>
@@ -98,7 +284,7 @@ router.post('/send-voicemail', async (req, res) => {
           </Say>
           <Pause length="2"/>
           <Say voice="${voice}" language="${language}">
-            This was an automated voicemail notification from SmartMart Supermarket. Goodbye!
+            This was an automated notification from SmartMart Supermarket. Goodbye!
           </Say>
         </Response>
       `.trim();
@@ -107,12 +293,24 @@ router.post('/send-voicemail', async (req, res) => {
         to: formattedTo,
         from: fromPhone,
         twiml: twiml,
-        // Detect answering machines & leave message after beep
         machineDetection: 'Enable',
         asyncAmd: 'true'
       });
 
       console.log(`[Twilio Voice] Outbound call placed to ${formattedTo}. SID: ${call.sid}`);
+
+      const record = {
+        id: `DISP-${Date.now().toString().slice(-4)}`,
+        type: 'VOICEMAIL',
+        recipient: formattedTo,
+        customerName,
+        title: offerTitle || (orderId ? `Order ${orderId} Update` : 'Voice Call'),
+        status: call.status || 'QUEUED',
+        provider: 'Twilio Live Voice',
+        sid: call.sid,
+        timestamp: new Date().toISOString()
+      };
+      dispatchHistory.unshift(record);
 
       return res.status(200).json({
         success: true,
@@ -124,11 +322,21 @@ router.post('/send-voicemail', async (req, res) => {
         message: `Voicemail call initiated successfully to ${formattedTo} via Twilio.`
       });
     } else {
-      // Simulation / Development Fallback Mode (Full test without requiring paid Twilio account)
       const mockCallSid = `CA_SIM_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
-      
-      console.log(`[Voicemail Simulation] Call dispatched to ${formattedTo}:`);
-      console.log(`[Voicemail Text] "${spokenText}"`);
+      console.log(`[Voicemail Simulation] Call dispatched to ${formattedTo}: "${spokenText}"`);
+
+      const record = {
+        id: `DISP-${Date.now().toString().slice(-4)}`,
+        type: 'VOICEMAIL',
+        recipient: formattedTo,
+        customerName,
+        title: offerTitle || (orderId ? `Order ${orderId} Update` : 'Voice Call'),
+        status: 'QUEUED (SIMULATED)',
+        provider: 'Simulation Mode',
+        sid: mockCallSid,
+        timestamp: new Date().toISOString()
+      };
+      dispatchHistory.unshift(record);
 
       return res.status(200).json({
         success: true,
@@ -137,12 +345,7 @@ router.post('/send-voicemail', async (req, res) => {
         status: 'queued',
         recipient: formattedTo,
         spokenText,
-        message: `[Simulation Mode] Voice notification dispatched to ${formattedTo}. Add TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, and TWILIO_PHONE_NUMBER in backend/.env for real carrier calls.`,
-        instructions: {
-          step1: 'Sign up at https://www.twilio.com and get a trial phone number',
-          step2: 'Add TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_PHONE_NUMBER into backend/.env',
-          step3: 'Restart backend to trigger live phone calls.'
-        }
+        message: `[Simulation Mode] Voice notification dispatched to ${formattedTo}. Add credentials in backend/.env for real phone calls.`
       });
     }
   } catch (error) {
@@ -155,16 +358,180 @@ router.post('/send-voicemail', async (req, res) => {
 });
 
 /**
+ * POST /api/voice/send-offer-alert
+ * Dispatches BOTH SMS and Automated Voicemail simultaneously for an offer
+ */
+router.post('/send-offer-alert', async (req, res) => {
+  try {
+    const {
+      to,
+      customerName = 'Valued Customer',
+      offerTitle = 'Supermarket Flash Deal',
+      promoCode = 'DEAL20',
+      discountPercent = 20,
+      description = '',
+      channels = ['SMS', 'VOICEMAIL']
+    } = req.body;
+
+    if (!to) {
+      return res.status(400).json({ error: 'Recipient phone number is required.' });
+    }
+
+    const formattedTo = formatE164(to);
+    const results = {};
+
+    // 1. Send SMS if requested
+    if (channels.includes('SMS')) {
+      const smsBody = `🎉 SmartMart Deal Alert: ${offerTitle}! Enjoy ${discountPercent}% OFF with code ${promoCode}. ${description || 'Fresh fruits, vegetables & groceries delivered in 15 mins'}. Shop now: https://smartmart.store`;
+      
+      const { client, fromPhone, isLive } = getTwilioClient();
+      if (isLive) {
+        try {
+          const msg = await client.messages.create({
+            to: formattedTo,
+            from: fromPhone,
+            body: smsBody
+          });
+          results.sms = { success: true, mode: 'twilio_live', sid: msg.sid };
+        } catch (e) {
+          results.sms = { success: false, error: e.message };
+        }
+      } else {
+        results.sms = { success: true, mode: 'simulated', sid: `SM_SIM_${Date.now()}` };
+      }
+    }
+
+    // 2. Send Voicemail if requested
+    if (channels.includes('VOICEMAIL')) {
+      const speech = buildVoicemailScript({
+        customerName,
+        offerTitle,
+        promoCode,
+        discount: discountPercent
+      });
+
+      const { client, fromPhone, isLive } = getTwilioClient();
+      if (isLive) {
+        try {
+          const escaped = speech.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+          const twiml = `
+            <Response>
+              <Pause length="1"/>
+              <Say voice="Polly.Aditi" language="en-IN">${escaped}</Say>
+              <Pause length="2"/>
+              <Say voice="Polly.Aditi" language="en-IN">Thank you for choosing SmartMart Supermarket. Goodbye!</Say>
+            </Response>
+          `;
+          const call = await client.calls.create({
+            to: formattedTo,
+            from: fromPhone,
+            twiml: twiml,
+            machineDetection: 'Enable'
+          });
+          results.voicemail = { success: true, mode: 'twilio_live', callSid: call.sid };
+        } catch (e) {
+          results.voicemail = { success: false, error: e.message };
+        }
+      } else {
+        results.voicemail = { success: true, mode: 'simulated', callSid: `CA_SIM_${Date.now()}` };
+      }
+    }
+
+    // Increment campaign count if matching
+    const matched = activeCampaigns.find(c => c.promoCode === promoCode || c.title === offerTitle);
+    if (matched) matched.totalDispatched = (matched.totalDispatched || 0) + 1;
+
+    return res.status(200).json({
+      success: true,
+      recipient: formattedTo,
+      offerTitle,
+      promoCode,
+      results,
+      message: `Offer alert successfully broadcasted to ${formattedTo} via ${channels.join(' & ')}.`
+    });
+  } catch (error) {
+    console.error('Error in /api/voice/send-offer-alert:', error);
+    return res.status(500).json({ error: error.message });
+  }
+});
+
+/**
+ * GET /api/voice/campaigns
+ * Get list of active promotional campaigns
+ */
+router.get('/campaigns', (req, res) => {
+  res.json({
+    success: true,
+    campaigns: activeCampaigns
+  });
+});
+
+/**
+ * POST /api/voice/campaigns
+ * Create a new promotional campaign
+ */
+router.post('/campaigns', (req, res) => {
+  try {
+    const {
+      title,
+      promoCode,
+      discountPercent = 15,
+      category = 'General Storewide',
+      description = '',
+      validTill = 'Valid for 7 days'
+    } = req.body;
+
+    if (!title || !promoCode) {
+      return res.status(400).json({ error: 'Title and promo code are required.' });
+    }
+
+    const newCampaign = {
+      id: `CMP-${Date.now().toString().slice(-4)}`,
+      title,
+      promoCode: promoCode.toUpperCase().replace(/\s+/g, ''),
+      discountPercent: Number(discountPercent),
+      category,
+      description: description || `Special promotional offer for SmartMart shoppers. Use code ${promoCode} for ${discountPercent}% discount.`,
+      validTill,
+      active: true,
+      totalDispatched: 0,
+      createdAt: new Date().toISOString()
+    };
+
+    activeCampaigns.unshift(newCampaign);
+
+    res.status(201).json({
+      success: true,
+      message: 'Campaign created successfully',
+      campaign: newCampaign
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/**
+ * GET /api/voice/history
+ * Get recent SMS and Voicemail dispatch logs
+ */
+router.get('/history', (req, res) => {
+  res.json({
+    success: true,
+    history: dispatchHistory.slice(0, 30)
+  });
+});
+
+/**
  * GET /api/voice/status
  * Check voice provider status
  */
 router.get('/status', (req, res) => {
-  const accountSid = process.env.TWILIO_ACCOUNT_SID;
-  const isConfigured = !!(accountSid && !accountSid.includes('your_'));
+  const { isLive, fromPhone } = getTwilioClient();
   res.json({
     status: 'OK',
-    provider: isConfigured ? 'Twilio Voice (Active)' : 'Simulation Mode (Ready for Twilio Credentials)',
-    isLiveConfigured: isConfigured
+    provider: isLive ? 'Twilio Live (SMS & Voice Active)' : 'Simulation Mode (Ready for Twilio Credentials)',
+    isLiveConfigured: isLive,
+    twilioPhoneNumber: isLive ? fromPhone : null
   });
 });
 

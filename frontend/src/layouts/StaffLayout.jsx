@@ -17,7 +17,8 @@ import {
   Settings,
   Bike,
   Users,
-  KeyRound
+  KeyRound,
+  Megaphone
 } from 'lucide-react';
 
 import { useState } from 'react';
@@ -77,6 +78,13 @@ export default function StaffLayout() {
       icon: Users,
       badge: isManager ? 'Manager' : null,
       badgeColor: 'amber'
+    },
+    { 
+      name: 'Campaigns & SMS/Voice Deals', 
+      href: '/staff/campaigns', 
+      icon: Megaphone,
+      badge: 'SMS/Voice',
+      badgeColor: 'emerald'
     },
     { name: 'POS Billing Counter', href: '/staff/pos', icon: ShoppingCart },
     { name: 'Inventory Management', href: '/staff/inventory', icon: PackageSearch },

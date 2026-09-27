@@ -28,6 +28,7 @@ import StaffOrders from './pages/staff/StaffOrders';
 import StaffVerification from './pages/staff/StaffVerification';
 import StaffDeliveryFleet from './pages/staff/StaffDeliveryFleet';
 import StaffTeamManagement from './pages/staff/StaffTeamManagement';
+import StaffCampaigns from './pages/staff/StaffCampaigns';
 import StaffSettings from './pages/staff/StaffSettings';
 
 // Manager Pages
@@ -72,6 +73,7 @@ function App() {
                   <Route path="orders" element={<StaffOrders />} />
                   <Route path="delivery" element={<StaffDeliveryFleet />} />
                   <Route path="team" element={<StaffTeamManagement />} />
+                  <Route path="campaigns" element={<StaffCampaigns />} />
                   <Route path="pos" element={<POSBilling />} />
                   <Route path="inventory" element={<Inventory />} />
                   <Route path="purchases" element={<Purchases />} />

@@ -461,7 +461,7 @@ export const apiSendVoicemail = async ({
 };
 
 /**
- * Check Voice provider status
+ * Check Voice / SMS provider status
  */
 export const apiGetVoiceStatus = async () => {
   try {
@@ -470,6 +470,181 @@ export const apiGetVoiceStatus = async () => {
     return await res.json();
   } catch (err) {
     return { status: 'OK', provider: 'Simulation Mode', isLiveConfigured: false };
+  }
+};
+
+/**
+ * Send automated SMS via Twilio Messages API
+ */
+export const apiSendSMS = async ({
+  to,
+  customerName = 'Valued Customer',
+  messageText = '',
+  offerTitle = '',
+  promoCode = '',
+  discountPercent = 0
+}) => {
+  try {
+    const res = await customFetch(`${API_BASE_URL}/voice/send-sms`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        to,
+        customerName,
+        messageText,
+        offerTitle,
+        promoCode,
+        discountPercent
+      })
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Failed to dispatch SMS');
+    }
+    return await res.json();
+  } catch (err) {
+    console.warn('apiSendSMS note:', err.message);
+    return {
+      success: true,
+      mode: 'client_simulated',
+      sid: `SM_CLIENT_${Date.now()}`,
+      recipient: to,
+      body: messageText || `SmartMart Offer: ${offerTitle}`,
+      message: `SMS simulated to ${to}`
+    };
+  }
+};
+
+/**
+ * Send Offer Alert via SMS and/or Voicemail simultaneously
+ */
+export const apiSendOfferAlert = async ({
+  to,
+  customerName = 'Valued Customer',
+  offerTitle,
+  promoCode,
+  discountPercent,
+  description = '',
+  channels = ['SMS', 'VOICEMAIL']
+}) => {
+  try {
+    const res = await customFetch(`${API_BASE_URL}/voice/send-offer-alert`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        to,
+        customerName,
+        offerTitle,
+        promoCode,
+        discountPercent,
+        description,
+        channels
+      })
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Failed to dispatch offer alert');
+    }
+    return await res.json();
+  } catch (err) {
+    console.warn('apiSendOfferAlert note:', err.message);
+    return {
+      success: true,
+      mode: 'client_simulated',
+      recipient: to,
+      offerTitle,
+      promoCode,
+      results: {
+        sms: { success: true, mode: 'simulated' },
+        voicemail: { success: true, mode: 'simulated' }
+      },
+      message: `Offer alert simulated to ${to} via ${channels.join(' & ')}`
+    };
+  }
+};
+
+/**
+ * Fetch promotional campaigns
+ */
+export const apiGetOfferCampaigns = async () => {
+  try {
+    const res = await customFetch(`${API_BASE_URL}/voice/campaigns`);
+    if (!res.ok) throw new Error('Failed to fetch campaigns');
+    const data = await res.json();
+    return data.campaigns || [];
+  } catch (err) {
+    return [
+      {
+        id: 'CMP-101',
+        title: 'Weekend Fresh Harvest 30% OFF',
+        promoCode: 'FRESH30',
+        discountPercent: 30,
+        category: 'Fruits & Vegetables',
+        description: 'Flat 30% off on all organic farm-fresh greens, seasonal fruits, and exotic vegetables.',
+        validTill: 'This Sunday Midnight',
+        active: true,
+        totalDispatched: 142
+      },
+      {
+        id: 'CMP-102',
+        title: 'Super Saver ₹100 Flat Discount',
+        promoCode: 'MART100',
+        discountPercent: 20,
+        category: 'Storewide Essentials',
+        description: 'Flat ₹100 instant cashback on any grocery cart above ₹499 with express 15-min delivery.',
+        validTill: 'Valid all month',
+        active: true,
+        totalDispatched: 89
+      },
+      {
+        id: 'CMP-103',
+        title: 'Festival Sweets & Dry Fruits 25% OFF',
+        promoCode: 'FESTIVE25',
+        discountPercent: 25,
+        category: 'Snacks & Beverages',
+        description: 'Special festive gift boxes, premium almonds, cashews, and artisan confectioneries.',
+        validTill: 'Limited stock',
+        active: true,
+        totalDispatched: 64
+      }
+    ];
+  }
+};
+
+/**
+ * Create a new promotional campaign
+ */
+export const apiCreateOfferCampaign = async (campaignData) => {
+  try {
+    const res = await customFetch(`${API_BASE_URL}/voice/campaigns`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(campaignData)
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Failed to create campaign');
+    }
+    return await res.json();
+  } catch (err) {
+    return {
+      success: true,
+      campaign: { ...campaignData, id: `CMP-${Date.now().toString().slice(-4)}`, totalDispatched: 0 }
+    };
+  }
+};
+
+/**
+ * Fetch SMS & Voicemail dispatch logs
+ */
+export const apiGetDispatchHistory = async () => {
+  try {
+    const res = await customFetch(`${API_BASE_URL}/voice/history`);
+    if (!res.ok) throw new Error('Failed to fetch history');
+    const data = await res.json();
+    return data.history || [];
+  } catch (err) {
+    return [];
   }
 };
 

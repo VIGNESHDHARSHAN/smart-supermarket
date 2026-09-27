@@ -21,7 +21,9 @@ import {
   ArrowLeft,
   Smartphone,
   CheckCircle2,
-  AlertTriangle
+  AlertTriangle,
+  MessageSquare,
+  PhoneCall
 } from 'lucide-react';
 import { useSupermarket, DEMO_CUSTOMERS } from '../../context/SupermarketContext';
 import { useLanguage } from '../../context/LanguageContext';
@@ -65,6 +67,8 @@ export default function CustomerSettings() {
   // Audio & Voice Preferences
   const [soundFx, setSoundFx] = useState(storeSettings?.soundFxEnabled !== false);
   const [voiceAi, setVoiceAi] = useState(storeSettings?.voiceAssistantEnabled !== false);
+  const [smsAlerts, setSmsAlerts] = useState(storeSettings?.smsAlertsEnabled !== false);
+  const [voicemailAlerts, setVoicemailAlerts] = useState(storeSettings?.voicemailAlertsEnabled !== false);
 
   // Budget Preferences
   const [budgetLimit, setBudgetLimit] = useState(storeSettings?.monthlyBudgetLimit || 2500);
@@ -133,9 +137,11 @@ export default function CustomerSettings() {
     updateStoreSettings({
       soundFxEnabled: soundFx,
       voiceAssistantEnabled: voiceAi,
+      smsAlertsEnabled: smsAlerts,
+      voicemailAlertsEnabled: voicemailAlerts,
       monthlyBudgetLimit: Number(budgetLimit)
     });
-    setSavedSuccessMsg('Preferences saved successfully!');
+    setSavedSuccessMsg('Notification and Audio preferences saved successfully!');
     setTimeout(() => setSavedSuccessMsg(''), 3000);
   };
 
@@ -537,11 +543,49 @@ export default function CustomerSettings() {
                     className="w-5 h-5 accent-primary-600 rounded cursor-pointer"
                   />
                 </div>
+
+                {/* SMS Deal Alerts Toggle */}
+                <div className="p-4 bg-gray-50 dark:bg-slate-800/60 rounded-2xl border border-gray-200 dark:border-slate-700 flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="p-2.5 bg-emerald-100 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300 rounded-xl">
+                      <MessageSquare className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <div className="font-bold text-sm text-gray-900 dark:text-white">SMS Flash Offers &amp; Coupon Codes</div>
+                      <div className="text-xs text-gray-500 dark:text-gray-400">Receive special grocery discount promo codes and delivery updates via text SMS</div>
+                    </div>
+                  </div>
+                  <input
+                    type="checkbox"
+                    checked={smsAlerts}
+                    onChange={(e) => setSmsAlerts(e.target.checked)}
+                    className="w-5 h-5 accent-emerald-600 rounded cursor-pointer"
+                  />
+                </div>
+
+                {/* Voicemail / Automated Voice Alerts Toggle */}
+                <div className="p-4 bg-gray-50 dark:bg-slate-800/60 rounded-2xl border border-gray-200 dark:border-slate-700 flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="p-2.5 bg-indigo-100 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-300 rounded-xl">
+                      <PhoneCall className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <div className="font-bold text-sm text-gray-900 dark:text-white">Automated Voicemail &amp; Voice Deal Calls</div>
+                      <div className="text-xs text-gray-500 dark:text-gray-400">Receive voice announcements for seasonal bumper deals and out-for-delivery alerts</div>
+                    </div>
+                  </div>
+                  <input
+                    type="checkbox"
+                    checked={voicemailAlerts}
+                    onChange={(e) => setVoicemailAlerts(e.target.checked)}
+                    className="w-5 h-5 accent-indigo-600 rounded cursor-pointer"
+                  />
+                </div>
               </div>
 
               <div className="flex justify-end pt-4">
                 <Button onClick={handleSaveAudioAndBudget}>
-                  <Save className="w-4 h-4 mr-2" /> Save Audio Preferences
+                  <Save className="w-4 h-4 mr-2" /> Save Notification &amp; Audio Preferences
                 </Button>
               </div>
             </div>
