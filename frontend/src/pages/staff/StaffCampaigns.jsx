@@ -13,7 +13,8 @@ import {
   RefreshCw, 
   ShieldCheck, 
   Settings,
-  AlertCircle
+  AlertCircle,
+  Users
 } from 'lucide-react';
 import { Button } from '../../components/ui/Button';
 import { 
@@ -24,6 +25,7 @@ import {
 } from '../../services/api';
 import { soundEffects } from '../../lib/audio';
 import OfferAlertModal from '../../components/voice/OfferAlertModal';
+import MassBroadcastModal from '../../components/voice/MassBroadcastModal';
 
 export default function StaffCampaigns() {
   const [campaigns, setCampaigns] = useState([]);
@@ -43,6 +45,8 @@ export default function StaffCampaigns() {
 
   // Selected offer for dispatch
   const [dispatchOffer, setDispatchOffer] = useState(null);
+  const [showMassBroadcastModal, setShowMassBroadcastModal] = useState(false);
+  const [massBroadcastOffer, setMassBroadcastOffer] = useState(null);
 
   const loadData = async () => {
     setIsLoading(true);
@@ -140,6 +144,17 @@ export default function StaffCampaigns() {
           >
             <Plus className="w-4 h-4" /> Create New Offer
           </Button>
+
+          <Button
+            size="sm"
+            onClick={() => {
+              setMassBroadcastOffer(null);
+              setShowMassBroadcastModal(true);
+            }}
+            className="bg-primary-600 hover:bg-primary-700 text-white font-black text-xs shadow-md flex items-center gap-1.5"
+          >
+            <Users className="w-4 h-4" /> Blast to All Customers
+          </Button>
         </div>
       </div>
 
@@ -204,12 +219,25 @@ export default function StaffCampaigns() {
                   <span className="text-[10px]">{camp.validTill}</span>
                 </div>
 
-                <Button
-                  onClick={() => setDispatchOffer(camp)}
-                  className="w-full h-10 bg-amber-500 hover:bg-amber-600 text-slate-950 font-black text-xs shadow-md flex items-center justify-center gap-1.5"
-                >
-                  <Send className="w-3.5 h-3.5" /> Broadcast via SMS &amp; Voicemail
-                </Button>
+                <div className="grid grid-cols-2 gap-2">
+                  <Button
+                    variant="outline"
+                    onClick={() => setDispatchOffer(camp)}
+                    className="h-10 text-xs font-bold flex items-center justify-center gap-1 border-gray-300 dark:border-slate-700"
+                  >
+                    <Send className="w-3 h-3" /> Test / Single
+                  </Button>
+
+                  <Button
+                    onClick={() => {
+                      setMassBroadcastOffer(camp);
+                      setShowMassBroadcastModal(true);
+                    }}
+                    className="h-10 bg-amber-500 hover:bg-amber-600 text-slate-950 font-black text-xs shadow-md flex items-center justify-center gap-1"
+                  >
+                    <Users className="w-3 h-3" /> Blast All
+                  </Button>
+                </div>
               </div>
             </div>
           ))}
@@ -412,6 +440,20 @@ export default function StaffCampaigns() {
           offer={dispatchOffer}
           defaultPhone="+91 98765 00000"
           defaultName="Ananya Iyer"
+        />
+      )}
+
+      {/* Mass Broadcast to All Registered Customers Modal */}
+      {showMassBroadcastModal && (
+        <MassBroadcastModal
+          isOpen={showMassBroadcastModal}
+          onClose={() => {
+            setShowMassBroadcastModal(false);
+            setMassBroadcastOffer(null);
+          }}
+          preselectedOffer={massBroadcastOffer}
+          campaigns={campaigns}
+          onBroadcastSuccess={loadData}
         />
       )}
 

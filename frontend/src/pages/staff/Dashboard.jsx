@@ -20,10 +20,18 @@ import {
   Activity, 
   Users, 
   Sparkles,
-  Zap
+  Zap,
+  Megaphone,
+  Send,
+  Plus,
+  PhoneCall,
+  MessageSquare
 } from 'lucide-react';
 import { AvailabilityBadge } from '../../components/ui/Badge';
 import { Button } from '../../components/ui/Button';
+import MassBroadcastModal from '../../components/voice/MassBroadcastModal';
+import { apiGetOfferCampaigns, apiCreateOfferCampaign } from '../../services/api';
+import { soundEffects } from '../../lib/audio';
 
 export default function Dashboard() {
   const navigate = useNavigate();
@@ -31,6 +39,52 @@ export default function Dashboard() {
 
   const [timeRange, setTimeRange] = useState('WEEK'); // 'TODAY' | 'WEEK' | 'MONTH'
   const [chartMetric, setChartMetric] = useState('REVENUE'); // 'REVENUE' | 'ORDERS'
+
+  // Marketing & Mass Outreach State
+  const [campaigns, setCampaigns] = useState([]);
+  const [showMassBroadcastModal, setShowMassBroadcastModal] = useState(false);
+  const [showCreateOfferModal, setShowCreateOfferModal] = useState(false);
+
+  const [offerTitle, setOfferTitle] = useState('');
+  const [offerCode, setOfferCode] = useState('');
+  const [offerDiscount, setOfferDiscount] = useState('25');
+  const [offerCategory, setOfferCategory] = useState('Storewide Essentials');
+  const [offerDesc, setOfferDesc] = useState('');
+  const [isSubmittingOffer, setIsSubmittingOffer] = useState(false);
+
+  React.useEffect(() => {
+    apiGetOfferCampaigns().then(data => {
+      if (data && data.length > 0) setCampaigns(data);
+    });
+  }, []);
+
+  const handleCreateOffer = async (e) => {
+    e.preventDefault();
+    if (!offerTitle || !offerCode) return;
+    setIsSubmittingOffer(true);
+    try {
+      const res = await apiCreateOfferCampaign({
+        title: offerTitle,
+        promoCode: offerCode,
+        discountPercent: Number(offerDiscount) || 20,
+        category: offerCategory,
+        description: offerDesc
+      });
+      if (res.campaign) {
+        setCampaigns(prev => [res.campaign, ...prev]);
+        setShowCreateOfferModal(false);
+        setOfferTitle('');
+        setOfferCode('');
+        setOfferDesc('');
+        soundEffects.playSuccessChime();
+        setShowMassBroadcastModal(true);
+      }
+    } catch (err) {
+      alert('Error creating offer: ' + err.message);
+    } finally {
+      setIsSubmittingOffer(false);
+    }
+  };
 
   const activeOnlineOrders = orders.filter(o => !['DELIVERED', 'COLLECTED', 'COMPLETED', 'CANCELLED'].includes(o.status));
 
@@ -202,6 +256,47 @@ export default function Dashboard() {
 
       </div>
 
+      {/* Admin / Manager Marketing & Mass Outreach Control Center */}
+      <div className="bg-gradient-to-r from-amber-500/15 via-orange-500/10 to-indigo-500/10 border border-amber-300/80 dark:border-amber-800/60 rounded-3xl p-5 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div className="flex items-center gap-3.5">
+          <div className="p-3.5 rounded-2xl bg-amber-500 text-slate-950 font-black shadow-md">
+            <Megaphone className="w-6 h-6 animate-pulse" />
+          </div>
+          <div>
+            <div className="flex items-center gap-2">
+              <span className="text-[10px] font-black px-2 py-0.5 rounded-full uppercase bg-amber-500 text-slate-950">
+                Marketing Control Hub
+              </span>
+              <h3 className="font-extrabold text-sm text-gray-950 dark:text-white">
+                Offers, Discounts &amp; Mass Customer Voice / SMS Blast
+              </h3>
+            </div>
+            <p className="text-xs text-gray-600 dark:text-gray-300 mt-0.5">
+              Create flash discounts &amp; coupons and broadcast simultaneously to all registered customer phone numbers via automated Voicemail &amp; SMS.
+            </p>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-2.5">
+          <Button
+            size="sm"
+            variant="outline"
+            className="text-xs font-bold bg-white dark:bg-slate-900 border-gray-300 dark:border-slate-700"
+            onClick={() => setShowCreateOfferModal(true)}
+          >
+            <Plus className="w-3.5 h-3.5 mr-1" /> Add New Offer
+          </Button>
+
+          <Button
+            size="sm"
+            className="bg-amber-500 hover:bg-amber-600 text-slate-950 font-black text-xs h-9 px-4 shadow-md flex items-center gap-1.5"
+            onClick={() => setShowMassBroadcastModal(true)}
+          >
+            <Send className="w-3.5 h-3.5" /> Blast to All Customers
+          </Button>
+        </div>
+      </div>
+
       {/* Stats Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
         <StatCard title="Catalog Products" value={stats.total} icon={Package} color="text-blue-600" bg="bg-blue-100" />
@@ -327,6 +422,127 @@ export default function Dashboard() {
         </div>
 
       </div>
+
+      {/* Admin Quick Add Offer Modal */}
+      {showCreateOfferModal && (
+        <div className="fixed inset-0 z-50 bg-black/75 backdrop-blur-xs flex items-center justify-center p-4">
+          <form 
+            onSubmit={handleCreateOffer}
+            className="bg-white dark:bg-slate-900 rounded-3xl max-w-md w-full p-6 shadow-2xl border border-gray-100 dark:border-slate-800 space-y-4 animate-in fade-in zoom-in-95 text-gray-900 dark:text-white"
+          >
+            <div className="flex items-center justify-between border-b border-gray-100 dark:border-slate-800 pb-3">
+              <h3 className="text-base font-black flex items-center gap-2">
+                <Sparkles className="w-5 h-5 text-amber-500" /> Create New Supermarket Offer
+              </h3>
+              <button 
+                type="button" 
+                onClick={() => setShowCreateOfferModal(false)}
+                className="p-1 text-gray-400 hover:text-gray-600 rounded-lg"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="space-y-3">
+              <div>
+                <label className="text-xs font-bold block mb-1">Offer Title</label>
+                <input 
+                  type="text" 
+                  value={offerTitle}
+                  onChange={e => setOfferTitle(e.target.value)}
+                  placeholder="e.g. Flash Deal 35% Off Fresh Fruits"
+                  className="w-full text-xs p-3 rounded-xl border border-gray-300 dark:border-slate-700 bg-white dark:bg-slate-800 focus:border-amber-500 focus:ring-1 focus:ring-amber-500 outline-hidden font-medium"
+                  required
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs font-bold block mb-1">Coupon Promo Code</label>
+                  <input 
+                    type="text" 
+                    value={offerCode}
+                    onChange={e => setOfferCode(e.target.value.toUpperCase())}
+                    placeholder="e.g. FLASH35"
+                    className="w-full text-xs p-3 rounded-xl border border-gray-300 dark:border-slate-700 bg-white dark:bg-slate-800 font-mono font-bold focus:border-amber-500 focus:ring-1 focus:ring-amber-500 outline-hidden"
+                    required
+                  />
+                </div>
+                <div>
+                  <label className="text-xs font-bold block mb-1">Discount %</label>
+                  <input 
+                    type="number" 
+                    value={offerDiscount}
+                    onChange={e => setOfferDiscount(e.target.value)}
+                    min="1"
+                    max="90"
+                    className="w-full text-xs p-3 rounded-xl border border-gray-300 dark:border-slate-700 bg-white dark:bg-slate-800 font-bold focus:border-amber-500 focus:ring-1 focus:ring-amber-500 outline-hidden"
+                    required
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="text-xs font-bold block mb-1">Store Department</label>
+                <select
+                  value={offerCategory}
+                  onChange={e => setOfferCategory(e.target.value)}
+                  className="w-full text-xs p-3 rounded-xl border border-gray-300 dark:border-slate-700 bg-white dark:bg-slate-800 focus:border-amber-500 focus:ring-1 focus:ring-amber-500 outline-hidden font-medium"
+                >
+                  <option value="Storewide Essentials">Storewide Essentials</option>
+                  <option value="Fruits & Vegetables">Fruits &amp; Vegetables</option>
+                  <option value="Dairy & Bakery">Dairy &amp; Bakery</option>
+                  <option value="Snacks & Beverages">Snacks &amp; Beverages</option>
+                  <option value="Festival Special">Festival Special</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="text-xs font-bold block mb-1">Description / Customer SMS Text</label>
+                <textarea 
+                  rows={2}
+                  value={offerDesc}
+                  onChange={e => setOfferDesc(e.target.value)}
+                  placeholder="Special weekend price cut on fresh daily produce..."
+                  className="w-full text-xs p-3 rounded-xl border border-gray-300 dark:border-slate-700 bg-white dark:bg-slate-800 focus:border-amber-500 focus:ring-1 focus:ring-amber-500 outline-hidden"
+                />
+              </div>
+            </div>
+
+            <div className="flex items-center gap-3 pt-3">
+              <Button
+                type="button"
+                variant="outline"
+                className="flex-1 h-11 text-xs font-bold"
+                onClick={() => setShowCreateOfferModal(false)}
+              >
+                Cancel
+              </Button>
+              <Button
+                type="submit"
+                disabled={isSubmittingOffer}
+                className="flex-2 h-11 bg-amber-500 hover:bg-amber-600 text-slate-950 font-black text-xs shadow-md"
+              >
+                {isSubmittingOffer ? 'Saving...' : 'Save & Prepare Broadcast →'}
+              </Button>
+            </div>
+          </form>
+        </div>
+      )}
+
+      {/* Mass Broadcast to All Registered Customers Modal */}
+      {showMassBroadcastModal && (
+        <MassBroadcastModal
+          isOpen={showMassBroadcastModal}
+          onClose={() => setShowMassBroadcastModal(false)}
+          campaigns={campaigns}
+          onBroadcastSuccess={() => {
+            apiGetOfferCampaigns().then(data => {
+              if (data) setCampaigns(data);
+            });
+          }}
+        />
+      )}
 
     </div>
   );
