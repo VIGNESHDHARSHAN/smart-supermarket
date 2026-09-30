@@ -39,6 +39,20 @@ const userSchema = new mongoose.Schema(
       type: Number,
       default: 100,
     },
+    address: {
+      type: String,
+      trim: true,
+      default: '',
+    },
+    landmark: {
+      type: String,
+      trim: true,
+      default: '',
+    },
+    savedAddresses: {
+      type: Array,
+      default: [],
+    },
   },
   {
     timestamps: true,

@@ -821,7 +821,12 @@ export const SupermarketProvider = ({ children }) => {
       deliveryFee,
       tax,
       grandTotal,
-      selfCheckoutDetails
+      selfCheckoutDetails,
+      customerId: currentUser?.id,
+      customerName: currentUser?.name || 'Customer',
+      customerPhone: currentUser?.phone || '',
+      deliveryAddress: deliveryDetails.address || currentUser?.address || '123 Market Street, Bengaluru',
+      deliverySpeed: deliveryDetails.speed || 'EXPRESS'
     }).catch(err => console.warn('Order saved to local context (backend server offline):', err));
 
     // Deduct stock

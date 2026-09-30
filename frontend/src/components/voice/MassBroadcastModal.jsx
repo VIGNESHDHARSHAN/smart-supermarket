@@ -127,6 +127,9 @@ export default function MassBroadcastModal({
     setIsBroadcasting(true);
     setResult(null);
 
+    const reachable = customers.filter(c => c.phone && c.phone.trim().length >= 8);
+    const targetList = reachable.length > 0 ? reachable : customers;
+
     try {
       const resp = await apiBroadcastToAllCustomers({
         offerTitle: activeTitle,
@@ -134,12 +137,16 @@ export default function MassBroadcastModal({
         discountPercent: Number(activeDiscount) || 20,
         description: activeDescription,
         channels,
-        targetRecipients: customers
+        targetRecipients: targetList
       });
 
       setResult(resp);
-      soundEffects.playSuccessChime();
-      onBroadcastSuccess();
+      if (resp.success) {
+        soundEffects.playSuccessChime();
+        onBroadcastSuccess();
+      } else {
+        soundEffects.playErrorBuzzer();
+      }
     } catch (err) {
       setResult({
         success: false,
@@ -315,16 +322,16 @@ export default function MassBroadcastModal({
 
         {/* Result status banner */}
         {result && (
-          <div className={`p-4 rounded-2xl border text-xs space-y-1.5 animate-in fade-in ${
+          <div className={`p-4 rounded-2xl border text-xs space-y-2 animate-in fade-in ${
             result.success 
               ? 'bg-emerald-50 dark:bg-emerald-950/60 border-emerald-300 dark:border-emerald-800 text-emerald-900 dark:text-emerald-200' 
               : 'bg-rose-50 dark:bg-rose-950/60 border-rose-300 dark:border-rose-800 text-rose-900 dark:text-rose-200'
           }`}>
             <div className="font-black text-sm flex items-center gap-2">
-              {result.success ? <CheckCircle2 className="w-5 h-5 text-emerald-600" /> : <AlertCircle className="w-5 h-5 text-rose-600" />}
-              {result.success ? 'Mass Broadcast Completed Successfully!' : 'Broadcast Failed'}
+              {result.success ? <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0" /> : <AlertCircle className="w-5 h-5 text-rose-600 shrink-0" />}
+              <span>{result.success ? 'Mass Broadcast Processed' : 'Broadcast Dispatch Warning'}</span>
             </div>
-            <p className="text-xs opacity-90">{result.message || result.error}</p>
+            <p className="text-xs opacity-90 leading-relaxed">{result.message || result.error}</p>
             {result.totalCustomers && (
               <div className="grid grid-cols-3 gap-2 pt-2 text-center font-bold">
                 <div className="bg-white/60 dark:bg-slate-900/60 p-2 rounded-xl border border-emerald-200 dark:border-emerald-800">
@@ -339,6 +346,24 @@ export default function MassBroadcastModal({
                   <div className="text-[10px] text-gray-500">Voicemails</div>
                   <div className="text-base font-black font-mono text-indigo-700 dark:text-indigo-300">{result.voicemailsPlaced}</div>
                 </div>
+              </div>
+            )}
+
+            {result.batchLogs && result.batchLogs.some(l => l.status === 'FAILED') && (
+              <div className="mt-2 pt-2 border-t border-rose-200 dark:border-rose-800/80 space-y-1.5">
+                <span className="font-bold text-[11px] text-rose-800 dark:text-rose-300 block">Failed Recipient Details:</span>
+                <div className="max-h-28 overflow-y-auto space-y-1">
+                  {result.batchLogs.filter(l => l.status === 'FAILED').map((log, idx) => (
+                    <div key={idx} className="p-2 rounded-lg bg-white/80 dark:bg-slate-900/80 border border-rose-200 dark:border-rose-900/60 text-[10px]">
+                      <span className="font-mono font-bold">{log.recipient}</span> ({log.customerName}): {log.error}
+                    </div>
+                  ))}
+                </div>
+                {result.batchLogs.some(l => String(l.error).includes('Verified') || String(l.error).includes('trial')) && (
+                  <p className="text-[10px] text-indigo-700 dark:text-indigo-300 font-bold mt-1 leading-snug">
+                    👉 On a Twilio Free Trial account, numbers must be verified at <a href="https://console.twilio.com/develop/phone-numbers/manage/verified" target="_blank" rel="noreferrer" className="underline font-black">Twilio Console Verified Caller IDs</a> before they can receive calls.
+                  </p>
+                )}
               </div>
             )}
           </div>

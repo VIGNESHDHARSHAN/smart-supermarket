@@ -75,11 +75,22 @@ let dispatchHistory = [
  */
 function formatE164(phone, defaultCountry = '+91') {
   if (!phone) return null;
-  const cleaned = phone.replace(/[^0-9+]/g, '');
-  if (cleaned.startsWith('+')) return cleaned;
-  if (cleaned.length === 10) return `${defaultCountry}${cleaned}`;
-  if (cleaned.length === 12 && cleaned.startsWith('91')) return `+${cleaned}`;
-  return `+${cleaned}`;
+  let cleaned = String(phone).trim().replace(/[^0-9+]/g, '');
+  if (!cleaned) return null;
+  if (cleaned.startsWith('00')) {
+    cleaned = '+' + cleaned.slice(2);
+  } else if (cleaned.startsWith('+')) {
+    // already has +, keep as is
+  } else if (cleaned.startsWith('0') && cleaned.length === 11) {
+    cleaned = `${defaultCountry}${cleaned.slice(1)}`;
+  } else if (cleaned.length === 10) {
+    cleaned = `${defaultCountry}${cleaned}`;
+  } else if (cleaned.length === 12 && cleaned.startsWith('91')) {
+    cleaned = `+${cleaned}`;
+  } else {
+    cleaned = `+${cleaned}`;
+  }
+  return cleaned.length >= 8 ? cleaned : null;
 }
 
 /**
@@ -320,6 +331,7 @@ router.post('/send-sms', async (req, res) => {
  * Initiates an automated voice phone call / voicemail to the customer's phone number
  */
 router.post('/send-voicemail', async (req, res) => {
+  let formattedTo = null;
   try {
     const {
       to,
@@ -340,7 +352,13 @@ router.post('/send-voicemail', async (req, res) => {
       });
     }
 
-    const formattedTo = formatE164(to);
+    formattedTo = formatE164(to);
+    if (!formattedTo) {
+      return res.status(400).json({
+        error: `Invalid recipient phone number "${to}". Please enter a valid 10-digit mobile number with country code (e.g. +91 9876543210).`
+      });
+    }
+
     const spokenText = buildVoicemailScript({
       customerName,
       orderId,
@@ -378,8 +396,7 @@ router.post('/send-voicemail', async (req, res) => {
         to: formattedTo,
         from: fromPhone,
         twiml: twiml,
-        machineDetection: 'Enable',
-        asyncAmd: 'true'
+        machineDetection: 'Enable'
       });
 
       console.log(`[Twilio Voice] Outbound call placed to ${formattedTo}. SID: ${call.sid}`);
@@ -436,7 +453,7 @@ router.post('/send-voicemail', async (req, res) => {
   } catch (error) {
     console.error('Error in /api/voice/send-voicemail:', error);
     return res.status(400).json({
-      error: parseTwilioError(error, formattedTo),
+      error: parseTwilioError(error, formattedTo || req.body?.to),
       details: error.code ? `Twilio Code: ${error.code}` : undefined
     });
   }
@@ -562,25 +579,48 @@ router.get('/status', async (req, res) => {
   try {
     const { sid, token, phone, isConfigured } = getTwilioCredentials();
 
-    let verification = { verified: false, error: null, accountName: null, accountStatus: null, accountType: null };
+    let verification = { 
+      verified: false, 
+      error: null, 
+      accountName: null, 
+      accountStatus: null, 
+      accountType: null,
+      isTrial: false,
+      verifiedNumbers: []
+    };
 
     if (isConfigured) {
       try {
-        const twilio = require('twilio');
-        const client = twilio(sid, token);
-        const acc = await client.api.v2010.accounts(sid).fetch();
-        verification = {
-          verified: true,
-          error: null,
-          accountName: acc.friendlyName,
-          accountStatus: acc.status,
-          accountType: acc.type
-        };
+        const twilio = getTwilioModule();
+        if (twilio) {
+          const client = twilio(sid, token);
+          const acc = await client.api.v2010.accounts(sid).fetch();
+          
+          let verifiedNumbers = [];
+          try {
+            const callerIds = await client.outgoingCallerIds.list({ limit: 50 });
+            verifiedNumbers = callerIds.map(c => c.phoneNumber);
+          } catch (cidErr) {
+            console.warn('Could not list verified caller IDs:', cidErr.message);
+          }
+
+          verification = {
+            verified: true,
+            error: null,
+            accountName: acc.friendlyName,
+            accountStatus: acc.status,
+            accountType: acc.type,
+            isTrial: acc.type === 'Trial',
+            verifiedNumbers
+          };
+        }
       } catch (err) {
         verification = {
           verified: false,
           error: err.message,
-          code: err.code
+          code: err.code,
+          isTrial: false,
+          verifiedNumbers: []
         };
       }
     }
@@ -605,6 +645,73 @@ router.get('/status', async (req, res) => {
     });
   } catch (err) {
     res.status(500).json({ error: err.message });
+  }
+});
+
+/**
+ * GET /api/voice/verified-caller-ids
+ * List all verified numbers in Twilio account
+ */
+router.get('/verified-caller-ids', async (req, res) => {
+  try {
+    const { client, isLive } = getTwilioClient();
+    if (!isLive) {
+      return res.json({ success: true, verifiedNumbers: [], isLive: false });
+    }
+    const callerIds = await client.outgoingCallerIds.list({ limit: 50 });
+    return res.json({
+      success: true,
+      isLive: true,
+      verifiedNumbers: callerIds.map(c => ({
+        sid: c.sid,
+        phoneNumber: c.phoneNumber,
+        friendlyName: c.friendlyName,
+        dateCreated: c.dateCreated
+      }))
+    });
+  } catch (err) {
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+/**
+ * POST /api/voice/request-verification
+ * Request verification for a new phone number via Twilio Validation Requests API
+ * Twilio calls the user's phone and gives a validation code they type on their phone keypad!
+ */
+router.post('/request-verification', async (req, res) => {
+  try {
+    const { phoneNumber, friendlyName } = req.body || {};
+    if (!phoneNumber) {
+      return res.status(400).json({ error: 'Phone number is required.' });
+    }
+    const formatted = formatE164(phoneNumber);
+    if (!formatted) {
+      return res.status(400).json({ error: `Invalid phone number format: "${phoneNumber}". Please use format +91 9876543210.` });
+    }
+
+    const { client, isLive } = getTwilioClient();
+    if (!isLive) {
+      return res.status(400).json({ error: 'Twilio is not configured with live credentials in backend/.env.' });
+    }
+
+    const vr = await client.validationRequests.create({
+      phoneNumber: formatted,
+      friendlyName: friendlyName || 'Customer Caller ID'
+    });
+
+    return res.json({
+      success: true,
+      validationCode: vr.validationCode,
+      phoneNumber: vr.phoneNumber,
+      callSid: vr.callSid,
+      message: `Twilio will call ${formatted} right now! Answer the incoming call and type this 6-digit code: ${vr.validationCode}`
+    });
+  } catch (err) {
+    console.error('[Twilio Validation Request Error]', err);
+    return res.status(400).json({
+      error: parseTwilioError(err, req.body?.phoneNumber)
+    });
   }
 });
 
@@ -723,9 +830,11 @@ router.post('/test-dispatch', async (req, res) => {
         });
         diagnostics.sms = { success: true, sid: msg.sid, status: msg.status };
       } catch (e) {
+        const errorText = parseTwilioError(e, formattedTo);
         diagnostics.sms = {
           success: false,
-          error: e.message,
+          error: errorText,
+          rawError: e.message,
           code: e.code,
           isUnverifiedTrialNumber: e.code === 21608
         };
@@ -750,9 +859,11 @@ router.post('/test-dispatch', async (req, res) => {
         });
         diagnostics.voice = { success: true, sid: call.sid, status: call.status };
       } catch (e) {
+        const errorText = parseTwilioError(e, formattedTo);
         diagnostics.voice = {
           success: false,
-          error: e.message,
+          error: errorText,
+          rawError: e.message,
           code: e.code,
           isUnverifiedTrialNumber: e.code === 21608
         };
@@ -768,7 +879,7 @@ router.post('/test-dispatch', async (req, res) => {
       diagnostics,
       message: overallSuccess 
         ? `Live test dispatched to ${formattedTo}!` 
-        : `Twilio error: ${(diagnostics.sms?.error || diagnostics.voice?.error)}`
+        : (diagnostics.voice?.error || diagnostics.sms?.error || 'Twilio test call failed')
     });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -958,9 +1069,42 @@ router.post('/broadcast-all', async (req, res) => {
     let smsSuccessCount = 0;
     let voicemailSuccessCount = 0;
 
+    // Filter and normalize recipients to only those with valid phone numbers
+    const validRecipients = [];
+    const skippedRecipients = [];
+
     for (const cust of recipients) {
-      const toPhone = formatE164(cust.phone || cust);
-      const custName = cust.name || 'Valued Shopper';
+      const rawPhone = typeof cust === 'string' ? cust : (cust?.phone || '');
+      const custName = typeof cust === 'string' ? 'Valued Customer' : (cust?.name || 'Valued Customer');
+      const formatted = formatE164(rawPhone);
+
+      if (formatted) {
+        validRecipients.push({ name: custName, phone: formatted, rawPhone });
+      } else {
+        skippedRecipients.push({ name: custName, phone: rawPhone, reason: 'Missing or invalid phone number' });
+        batchLogs.push({
+          type: 'SKIPPED',
+          recipient: rawPhone || 'NO_PHONE',
+          customerName: custName,
+          status: 'SKIPPED',
+          error: 'Missing or invalid mobile number'
+        });
+      }
+    }
+
+    if (validRecipients.length === 0) {
+      return res.status(400).json({
+        success: false,
+        error: 'None of the registered customers have a valid mobile phone number.',
+        message: 'No valid phone numbers found. Please link or update customer phone numbers first.',
+        skipped: skippedRecipients.length,
+        batchLogs
+      });
+    }
+
+    for (const cust of validRecipients) {
+      const toPhone = cust.phone;
+      const custName = cust.name;
 
       // 1. Send SMS to this customer
       if (channels.includes('SMS')) {
@@ -971,7 +1115,8 @@ router.post('/broadcast-all', async (req, res) => {
             smsSuccessCount++;
             batchLogs.push({ type: 'SMS', recipient: toPhone, customerName: custName, status: 'SENT', sid: msg.sid });
           } catch (e) {
-            batchLogs.push({ type: 'SMS', recipient: toPhone, customerName: custName, status: 'FAILED', error: e.message });
+            const errStr = parseTwilioError(e, toPhone);
+            batchLogs.push({ type: 'SMS', recipient: toPhone, customerName: custName, status: 'FAILED', error: errStr, code: e.code });
           }
         } else {
           smsSuccessCount++;
@@ -997,7 +1142,8 @@ router.post('/broadcast-all', async (req, res) => {
             voicemailSuccessCount++;
             batchLogs.push({ type: 'VOICEMAIL', recipient: toPhone, customerName: custName, status: 'QUEUED', sid: call.sid });
           } catch (e) {
-            batchLogs.push({ type: 'VOICEMAIL', recipient: toPhone, customerName: custName, status: 'FAILED', error: e.message });
+            const errStr = parseTwilioError(e, toPhone);
+            batchLogs.push({ type: 'VOICEMAIL', recipient: toPhone, customerName: custName, status: 'FAILED', error: errStr, code: e.code });
           }
         } else {
           voicemailSuccessCount++;
@@ -1008,7 +1154,7 @@ router.post('/broadcast-all', async (req, res) => {
 
     // Update campaign counter
     const matched = activeCampaigns.find(c => c.promoCode === promoCode || c.title === offerTitle);
-    if (matched) matched.totalDispatched = (matched.totalDispatched || 0) + recipients.length;
+    if (matched) matched.totalDispatched = (matched.totalDispatched || 0) + validRecipients.length;
 
     // Prepend to recent history
     batchLogs.forEach(log => {
@@ -1025,10 +1171,21 @@ router.post('/broadcast-all', async (req, res) => {
       });
     });
 
-    res.json({
-      success: true,
-      message: `Mass broadcast successfully delivered to ${recipients.length} registered customer phone numbers!`,
-      totalCustomers: recipients.length,
+    const voiceRequested = channels.includes('VOICEMAIL');
+    const smsRequested = channels.includes('SMS');
+    const overallSuccess = (!voiceRequested || voicemailSuccessCount > 0) && (!smsRequested || smsSuccessCount > 0);
+
+    let resultMsg = `Broadcast dispatched to ${validRecipients.length} customer(s).`;
+    if (isLive && voiceRequested && voicemailSuccessCount === 0) {
+      const firstErr = batchLogs.find(l => l.type === 'VOICEMAIL' && l.status === 'FAILED')?.error;
+      resultMsg = firstErr || 'Twilio failed to place voice calls to the recipient(s).';
+    }
+
+    res.status(overallSuccess ? 200 : (isLive ? 400 : 200)).json({
+      success: overallSuccess,
+      message: resultMsg,
+      totalCustomers: validRecipients.length,
+      skippedCustomers: skippedRecipients.length,
       smsSent: smsSuccessCount,
       voicemailsPlaced: voicemailSuccessCount,
       isLive,

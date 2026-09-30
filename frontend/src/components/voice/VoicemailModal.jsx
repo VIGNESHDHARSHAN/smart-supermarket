@@ -209,19 +209,24 @@ export default function VoicemailModal({
 
         {/* Result Feedback Banner */}
         {result && (
-          <div className={`p-3.5 rounded-2xl border text-xs space-y-1 ${
+          <div className={`p-3.5 rounded-2xl border text-xs space-y-1.5 ${
             result.success 
               ? 'bg-emerald-50 border-emerald-200 text-emerald-900' 
               : 'bg-rose-50 border-rose-200 text-rose-900'
           }`}>
             <div className="font-extrabold flex items-center gap-1.5">
-              {result.success ? <CheckCircle2 className="w-4 h-4 text-emerald-600" /> : <AlertCircle className="w-4 h-4 text-rose-600" />}
-              {result.success ? 'Voicemail Call Dispatched!' : 'Call Failed'}
+              {result.success ? <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" /> : <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />}
+              <span>{result.success ? 'Voicemail Call Dispatched!' : 'Telephony Dispatch Notice'}</span>
             </div>
-            <p className="text-[11px] opacity-90">{result.message || result.error}</p>
+            <p className="text-[11px] opacity-95 leading-relaxed">{result.message || result.error}</p>
             {result.callSid && (
-              <div className="text-[10px] font-mono text-gray-500 pt-1">
+              <div className="text-[10px] font-mono text-gray-500 pt-0.5">
                 Call SID: <span className="font-bold text-gray-700">{result.callSid}</span>
+              </div>
+            )}
+            {String(result.error || result.message).includes('Verified') && (
+              <div className="pt-1.5 text-[10px] border-t border-rose-200 text-indigo-700">
+                👉 Add this number to your <a href="https://console.twilio.com/develop/phone-numbers/manage/verified" target="_blank" rel="noreferrer" className="underline font-black">Twilio Console Verified Caller IDs</a> to receive live phone calls on a Free Trial account.
               </div>
             )}
           </div>

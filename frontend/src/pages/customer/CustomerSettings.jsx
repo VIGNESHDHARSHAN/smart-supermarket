@@ -31,7 +31,7 @@ import { useTheme } from '../../context/ThemeContext';
 import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
 import { soundEffects } from '../../lib/audio';
-import { apiUpdateCustomerPhone } from '../../services/api';
+import { apiUpdateCustomerPhone, apiUpdateCustomerProfile, apiTestTwilioDispatch, apiGetVoiceStatus, apiInitiateTwilioPhoneVerification } from '../../services/api';
 
 export default function CustomerSettings() {
   const navigate = useNavigate();
@@ -55,6 +55,7 @@ export default function CustomerSettings() {
   const [profileName, setProfileName] = useState(currentUser?.name || 'Customer');
   const [profileEmail, setProfileEmail] = useState(currentUser?.email || 'user@example.com');
   const [profilePhone, setProfilePhone] = useState(currentUser?.phone || '+91 98451 23456');
+  const [profileAddress, setProfileAddress] = useState(currentUser?.address || '');
 
   // Address Manager State
   const [addresses, setAddresses] = useState(currentUser?.savedAddresses || [
@@ -78,24 +79,167 @@ export default function CustomerSettings() {
   const currentMonthSpent = orders.reduce((sum, o) => sum + (o.grandTotal || 0), 0);
   const budgetPercent = Math.min(100, Math.round((currentMonthSpent / (budgetLimit || 1)) * 100));
 
-  const handleSaveProfile = (e) => {
-    e.preventDefault();
+  const [isTestingCall, setIsTestingCall] = useState(false);
+  const [testCallResult, setTestCallResult] = useState(null);
+  const [voiceStatus, setVoiceStatus] = useState(null);
+  const [isVerifyingTwilio, setIsVerifyingTwilio] = useState(false);
+  const [verificationResponse, setVerificationResponse] = useState(null);
+
+  React.useEffect(() => {
+    apiGetVoiceStatus().then(st => setVoiceStatus(st)).catch(() => {});
+  }, []);
+
+  React.useEffect(() => {
+    if (currentUser) {
+      if (currentUser.name) setProfileName(currentUser.name);
+      if (currentUser.email) setProfileEmail(currentUser.email);
+      if (currentUser.phone) setProfilePhone(currentUser.phone);
+      if (currentUser.address) setProfileAddress(currentUser.address);
+      if (Array.isArray(currentUser.savedAddresses) && currentUser.savedAddresses.length > 0) {
+        setAddresses(currentUser.savedAddresses);
+      }
+    }
+  }, [currentUser]);
+
+  const cleanPhoneDigits = (profilePhone || '').replace(/[^0-9]/g, '');
+  const isPhoneVerifiedOnTwilio = Boolean(
+    cleanPhoneDigits.length >= 8 &&
+    voiceStatus?.verification?.verifiedNumbers?.some(vn => {
+      const cleanVn = vn.replace(/[^0-9]/g, '');
+      return cleanVn.endsWith(cleanPhoneDigits.slice(-10));
+    })
+  );
+
+  const handleRequestTwilioVerification = async () => {
+    if (!profilePhone || profilePhone.trim().length < 8) {
+      alert('Please enter your mobile phone number first.');
+      return;
+    }
+    setIsVerifyingTwilio(true);
+    setVerificationResponse(null);
+    try {
+      const resp = await apiInitiateTwilioPhoneVerification({
+        phoneNumber: profilePhone.trim(),
+        friendlyName: profileName || currentUser?.name || 'Customer'
+      });
+      setVerificationResponse(resp);
+      soundEffects.playSuccessChime();
+    } catch (err) {
+      setVerificationResponse({
+        success: false,
+        error: err.message || 'Twilio verification request failed.'
+      });
+      soundEffects.playErrorBuzzer();
+    } finally {
+      setIsVerifyingTwilio(false);
+    }
+  };
+
+  const handleRefreshTwilioStatus = async () => {
+    try {
+      const st = await apiGetVoiceStatus();
+      setVoiceStatus(st);
+      soundEffects.playSuccessChime();
+    } catch (e) {}
+  };
+
+  const handleTestVoiceCall = async () => {
+    if (!profilePhone || profilePhone.trim().length < 8) {
+      alert('Please enter a valid mobile number first.');
+      return;
+    }
+    setIsTestingCall(true);
+    setTestCallResult(null);
+
+    // Save profile / phone first so it's registered in MongoDB
+    try {
+      await apiUpdateCustomerPhone(currentUser?.id, currentUser?.email || profileEmail, profilePhone.trim(), profileName);
+    } catch (e) {}
+
+    try {
+      const resp = await apiTestTwilioDispatch({ to: profilePhone, type: 'VOICEMAIL' });
+      setTestCallResult(resp);
+      if (resp.success) {
+        soundEffects.playSuccessChime();
+      } else {
+        soundEffects.playErrorBuzzer();
+      }
+    } catch (err) {
+      setTestCallResult({
+        success: false,
+        message: err.message || 'Call failed'
+      });
+      soundEffects.playErrorBuzzer();
+    } finally {
+      setIsTestingCall(false);
+    }
+  };
+
+  const syncAddressesToBackend = async (newAddresses, primaryAddr) => {
+    if (!currentUser) return;
     const updatedUser = {
       ...currentUser,
-      name: profileName,
-      email: profileEmail,
-      phone: profilePhone,
-      savedAddresses: addresses
+      savedAddresses: newAddresses,
+      address: primaryAddr || currentUser.address || ''
     };
     loginCustomer(updatedUser);
+    try {
+      await apiUpdateCustomerProfile({
+        id: currentUser?.id,
+        userId: currentUser?.id,
+        email: currentUser?.email,
+        phone: currentUser?.phone,
+        address: primaryAddr || currentUser.address || '',
+        savedAddresses: newAddresses
+      });
+    } catch (e) {
+      console.warn('Sync address to MongoDB note:', e.message);
+    }
+  };
+
+  const handleSaveProfile = async (e) => {
+    e.preventDefault();
+    const primaryAddr = profileAddress.trim() || addresses.find(a => a.isDefault)?.address || currentUser?.address || '';
     
-    // Sync with MongoDB backend and credit loyalty points if newly registered
-    if (profilePhone && profilePhone.trim()) {
-      apiUpdateCustomerPhone(currentUser?.id, currentUser?.email || profileEmail, profilePhone.trim()).catch(() => {});
+    // Update default address in list if changed
+    let updatedAddresses = [...addresses];
+    if (primaryAddr) {
+      const existingDefIdx = updatedAddresses.findIndex(a => a.isDefault);
+      if (existingDefIdx >= 0) {
+        updatedAddresses[existingDefIdx] = { ...updatedAddresses[existingDefIdx], address: primaryAddr };
+      } else if (updatedAddresses.length === 0) {
+        updatedAddresses = [{ id: 'addr_' + Date.now(), label: 'Home', address: primaryAddr, isDefault: true }];
+      }
+    }
+
+    const updatedUser = {
+      ...currentUser,
+      name: profileName.trim(),
+      email: profileEmail.trim(),
+      phone: profilePhone.trim(),
+      address: primaryAddr,
+      savedAddresses: updatedAddresses
+    };
+    loginCustomer(updatedUser);
+    setAddresses(updatedAddresses);
+    
+    // Persist full profile directly to MongoDB backend!
+    try {
+      await apiUpdateCustomerProfile({
+        id: currentUser?.id,
+        userId: currentUser?.id,
+        name: profileName.trim(),
+        email: profileEmail.trim(),
+        phone: profilePhone.trim(),
+        address: primaryAddr,
+        savedAddresses: updatedAddresses
+      });
+    } catch (err) {
+      console.warn('Backend profile sync note:', err.message);
     }
 
     soundEffects.playSuccessChime();
-    setSavedSuccessMsg('Profile updated successfully! Mobile preferences synced.');
+    setSavedSuccessMsg('Profile updated and saved to database successfully!');
     setTimeout(() => setSavedSuccessMsg(''), 3500);
   };
 
@@ -103,11 +247,12 @@ export default function CustomerSettings() {
     e.preventDefault();
     if (!newAddressText.trim()) return;
 
+    const isFirst = addresses.length === 0;
     const newAddr = {
       id: 'addr_' + Date.now(),
       label: newLabel || 'Home',
       address: newAddressText.trim(),
-      isDefault: addresses.length === 0
+      isDefault: isFirst
     };
 
     const updated = [...addresses, newAddr];
@@ -115,28 +260,22 @@ export default function CustomerSettings() {
     setNewAddressText('');
     setShowAddAddress(false);
 
-    if (currentUser) {
-      currentUser.savedAddresses = updated;
-    }
+    syncAddressesToBackend(updated, isFirst ? newAddr.address : undefined);
     soundEffects.playNotificationPing();
   };
 
   const handleDeleteAddress = (id) => {
     const updated = addresses.filter(a => a.id !== id);
     setAddresses(updated);
-    if (currentUser) {
-      currentUser.savedAddresses = updated;
-    }
+    const newDefault = updated.find(a => a.isDefault)?.address || (updated[0]?.address || '');
+    syncAddressesToBackend(updated, newDefault);
   };
 
   const handleSetDefaultAddress = (id) => {
     const updated = addresses.map(a => ({ ...a, isDefault: a.id === id }));
     setAddresses(updated);
     const target = updated.find(a => a.id === id);
-    if (currentUser && target) {
-      currentUser.address = target.address;
-      currentUser.savedAddresses = updated;
-    }
+    syncAddressesToBackend(updated, target?.address);
     soundEffects.playNotificationPing();
   };
 
@@ -312,23 +451,202 @@ export default function CustomerSettings() {
 
                 <div>
                   <div className="flex items-center justify-between mb-1.5">
-                    <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wider">
-                      Phone Number
-                    </label>
+                    <div className="flex items-center gap-2">
+                      <label className="text-xs font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wider">
+                        Phone Number
+                      </label>
+                      {voiceStatus?.verification?.isTrial && (
+                        isPhoneVerifiedOnTwilio ? (
+                          <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-800 flex items-center gap-1">
+                            <CheckCircle2 className="w-3 h-3 text-emerald-600" /> Twilio Verified ✓
+                          </span>
+                        ) : (
+                          <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300 border border-amber-300 dark:border-amber-800 flex items-center gap-1">
+                            <AlertTriangle className="w-3 h-3 text-amber-600" /> Trial Unverified
+                          </span>
+                        )
+                      )}
+                    </div>
                     <span className="text-[10px] font-black text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/60 px-2 py-0.5 rounded-full border border-amber-200 dark:border-amber-800">
                       🎁 +50 Pts &amp; Voicemail Deals
                     </span>
                   </div>
-                  <Input 
-                    type="tel" 
-                    value={profilePhone} 
-                    onChange={(e) => setProfilePhone(e.target.value)} 
-                    placeholder="+91 98451 23456"
-                    required 
-                  />
-                  <p className="text-[10px] text-gray-500 dark:text-gray-400 mt-1">
-                    Used for automated voice mail coupons, SMS delivery tracking, and flash deals.
-                  </p>
+
+                  <div className="space-y-2">
+                    <Input 
+                      type="tel" 
+                      value={profilePhone} 
+                      onChange={(e) => setProfilePhone(e.target.value)} 
+                      placeholder="+91 98451 23456"
+                      required 
+                    />
+                    
+                    <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
+                      <p className="text-[10px] text-gray-500 dark:text-gray-400">
+                        Include country code (e.g. <code>+91</code> for India).
+                      </p>
+                      
+                      <div className="flex items-center gap-1.5">
+                        {!isPhoneVerifiedOnTwilio && voiceStatus?.verification?.isTrial && (
+                          <button
+                            type="button"
+                            onClick={handleRequestTwilioVerification}
+                            disabled={isVerifyingTwilio || !profilePhone}
+                            className="px-2.5 py-1 text-[11px] font-bold bg-amber-500 hover:bg-amber-600 disabled:opacity-50 text-slate-950 rounded-lg flex items-center gap-1 shadow-xs transition-colors shrink-0"
+                            title="Twilio calls your phone and speaks a validation code"
+                          >
+                            <PhoneCall className={`w-3 h-3 ${isVerifyingTwilio ? 'animate-bounce' : ''}`} />
+                            <span>{isVerifyingTwilio ? 'Initiating Call...' : '⚡ Verify Phone'}</span>
+                          </button>
+                        )}
+
+                        <button
+                          type="button"
+                          onClick={handleTestVoiceCall}
+                          disabled={isTestingCall || !profilePhone}
+                          className="px-2.5 py-1 text-[11px] font-bold bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white rounded-lg flex items-center gap-1 shadow-xs transition-colors shrink-0"
+                        >
+                          <PhoneCall className={`w-3 h-3 ${isTestingCall ? 'animate-bounce' : ''}`} />
+                          <span>{isTestingCall ? 'Calling Phone...' : '📞 Test Voice Call'}</span>
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Verification Call Ongoing Display */}
+                  {verificationResponse && (
+                    <div className={`mt-2.5 p-3.5 rounded-2xl border text-xs animate-in fade-in space-y-2 ${
+                      verificationResponse.success 
+                        ? 'bg-indigo-50 dark:bg-indigo-950/60 border-indigo-300 dark:border-indigo-800 text-indigo-950 dark:text-indigo-200' 
+                        : 'bg-rose-50 dark:bg-rose-950/60 border-rose-300 dark:border-rose-800 text-rose-950 dark:text-rose-200'
+                    }`}>
+                      {verificationResponse.success ? (
+                        <>
+                          <div className="font-bold flex items-center gap-1.5 text-indigo-700 dark:text-indigo-300">
+                            <PhoneCall className="w-4 h-4 animate-bounce" />
+                            <span>Twilio is calling your phone right now!</span>
+                          </div>
+                          <p className="text-[11px] leading-relaxed">
+                            Pick up the incoming phone call from Twilio. When the automated voice asks, type this 6-digit code on your phone's dial pad:
+                          </p>
+                          <div className="p-3 bg-white dark:bg-slate-900 rounded-xl border border-indigo-200 dark:border-indigo-800 flex items-center justify-between">
+                            <span className="text-xs text-gray-500">Twilio Validation Code:</span>
+                            <span className="text-2xl font-black font-mono tracking-widest text-indigo-600 dark:text-indigo-400">
+                              {verificationResponse.validationCode}
+                            </span>
+                          </div>
+                          <div className="flex items-center justify-between pt-1">
+                            <span className="text-[10px] text-gray-500">Entered the code on your phone?</span>
+                            <button
+                              type="button"
+                              onClick={handleRefreshTwilioStatus}
+                              className="px-2.5 py-1 text-[11px] font-bold bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg shadow-xs"
+                            >
+                              Check Verification Status ↻
+                            </button>
+                          </div>
+                        </>
+                      ) : (
+                        <div>
+                          <div className="font-bold text-rose-700 dark:text-rose-300 flex items-center gap-1">
+                            <AlertTriangle className="w-4 h-4" /> Verification Call Failed
+                          </div>
+                          <p className="text-[11px] mt-1">{verificationResponse.error}</p>
+                          <div className="mt-2 pt-2 border-t border-rose-200 dark:border-rose-800/60 flex items-center justify-between">
+                            <span className="text-[10px]">Prefer SMS verification instead?</span>
+                            <a 
+                              href="https://console.twilio.com/develop/phone-numbers/manage/verified" 
+                              target="_blank" 
+                              rel="noreferrer"
+                              className="font-bold text-[11px] text-indigo-600 dark:text-indigo-400 underline"
+                            >
+                              Verify in Twilio Console →
+                            </a>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Test Call Diagnostic Feedback */}
+                  {testCallResult && (
+                    <div className={`mt-2.5 p-3 rounded-xl border text-xs space-y-1 animate-in fade-in ${
+                      testCallResult.success 
+                        ? 'bg-emerald-50 dark:bg-emerald-950/50 border-emerald-300 dark:border-emerald-800 text-emerald-900 dark:text-emerald-200' 
+                        : 'bg-rose-50 dark:bg-rose-950/50 border-rose-300 dark:border-rose-800 text-rose-900 dark:text-rose-200'
+                    }`}>
+                      <div className="font-bold flex items-center gap-1.5">
+                        {testCallResult.success ? <CheckCircle2 className="w-4 h-4 text-emerald-600" /> : <AlertTriangle className="w-4 h-4 text-rose-600" />}
+                        <span>{testCallResult.success ? 'Call Dispatched Successfully!' : 'Telephony Notice'}</span>
+                      </div>
+                      <p className="text-[11px] leading-relaxed opacity-95">
+                        {testCallResult.message}
+                      </p>
+                      {testCallResult.diagnostics?.voice?.isUnverifiedTrialNumber && (
+                        <div className="pt-2 text-[11px] border-t border-rose-200 dark:border-rose-800/60 space-y-1">
+                          <div>
+                            <strong>Why call didn't ring:</strong> Your Twilio account is a <em>Free Trial</em>, which blocks calls to numbers that haven't been verified first.
+                          </div>
+                          <div className="flex items-center gap-2 pt-1">
+                            <button
+                              type="button"
+                              onClick={handleRequestTwilioVerification}
+                              className="px-2 py-1 text-[10px] font-bold bg-amber-500 hover:bg-amber-600 text-slate-950 rounded shadow-xs"
+                            >
+                              📞 Verify via Instant Phone Call
+                            </button>
+                            <span className="text-[10px] text-gray-500">or</span>
+                            <a 
+                              href="https://console.twilio.com/develop/phone-numbers/manage/verified" 
+                              target="_blank" 
+                              rel="noreferrer" 
+                              className="underline font-bold text-indigo-600 dark:text-indigo-400"
+                            >
+                              Verify via Twilio Console (SMS OTP) →
+                            </a>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {voiceStatus?.verification?.isTrial && (
+                    <div className="mt-2.5 p-3 bg-amber-50 dark:bg-amber-950/40 rounded-xl border border-amber-200 dark:border-amber-800/60 text-[11px] text-amber-900 dark:text-amber-200 space-y-1.5">
+                      <div className="flex items-center justify-between">
+                        <strong className="flex items-center gap-1 text-amber-800 dark:text-amber-300">
+                          <AlertTriangle className="w-3.5 h-3.5 text-amber-600" />
+                          Twilio Free Trial Active
+                        </strong>
+                        <a 
+                          href="https://console.twilio.com/develop/phone-numbers/manage/verified" 
+                          target="_blank" 
+                          rel="noreferrer"
+                          className="text-[10px] font-bold text-indigo-600 dark:text-indigo-400 underline"
+                        >
+                          Twilio Console →
+                        </a>
+                      </div>
+                      <p className="text-[10px] text-amber-700 dark:text-amber-300/90 leading-relaxed">
+                        Twilio Trial accounts can only place calls to numbers listed under <em>Verified Caller IDs</em>.
+                      </p>
+                      {voiceStatus.verification.verifiedNumbers?.length > 0 ? (
+                        <div className="pt-1 border-t border-amber-200/80 dark:border-amber-800/50">
+                          <span className="text-[10px] font-semibold text-gray-600 dark:text-gray-400">Currently verified numbers on your account:</span>
+                          <div className="mt-1 flex flex-wrap gap-1">
+                            {voiceStatus.verification.verifiedNumbers.map((num, idx) => (
+                              <span key={idx} className="font-mono text-[10px] bg-white dark:bg-slate-900 px-2 py-0.5 rounded border border-amber-200 dark:border-amber-800 font-bold text-gray-800 dark:text-gray-200">
+                                {num}
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="text-[10px] text-amber-700 dark:text-amber-400">
+                          No verified numbers found yet. Add your mobile number to start receiving live calls.
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
 
                 <div className="sm:col-span-2">
@@ -341,6 +659,21 @@ export default function CustomerSettings() {
                     onChange={(e) => setProfileEmail(e.target.value)} 
                     required 
                   />
+                </div>
+
+                <div className="sm:col-span-2">
+                  <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-1.5 uppercase tracking-wider">
+                    Primary Delivery Address
+                  </label>
+                  <Input 
+                    type="text" 
+                    value={profileAddress} 
+                    onChange={(e) => setProfileAddress(e.target.value)} 
+                    placeholder="e.g. Flat 402, Green Meadows Apt, Koramangala 4th Block, Bengaluru"
+                  />
+                  <p className="text-[11px] text-gray-400 mt-1">
+                    Used as the default delivery destination for your fast express delivery orders.
+                  </p>
                 </div>
               </div>
 

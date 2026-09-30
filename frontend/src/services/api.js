@@ -164,7 +164,8 @@ export const apiGetRazorpayKey = async () => {
     if (!res.ok) throw new Error('Failed to fetch Razorpay key');
     return await res.json();
   } catch (err) {
-    return { key: 'rzp_test_SmartMart2026' };
+    const envKey = (import.meta.env.VITE_RAZORPAY_KEY_ID || '').trim();
+    return { key: envKey || 'rzp_test_TZqeZKHJCbUTaF' };
   }
 };
 
@@ -427,37 +428,24 @@ export const apiSendVoicemail = async ({
   voice = 'Polly.Aditi',
   language = 'en-IN'
 }) => {
-  try {
-    const res = await customFetch(`${API_BASE_URL}/voice/send-voicemail`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        to,
-        customerName,
-        orderId,
-        orderStatus,
-        messageText,
-        voice,
-        language
-      })
-    });
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({}));
-      throw new Error(err.error || 'Failed to dispatch voicemail');
-    }
-    return await res.json();
-  } catch (err) {
-    console.warn('apiSendVoicemail fallback note:', err.message);
-    // Client-side simulation fallback if backend is unreachable
-    return {
-      success: true,
-      mode: 'client_simulated',
-      callSid: `CA_CLIENT_${Date.now()}`,
-      status: 'completed',
-      recipient: to,
-      message: `Voicemail simulated to ${to} (Order ${orderId})`
-    };
+  const res = await customFetch(`${API_BASE_URL}/voice/send-voicemail`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      to,
+      customerName,
+      orderId,
+      orderStatus,
+      messageText,
+      voice,
+      language
+    })
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok || data.success === false) {
+    throw new Error(data.error || data.message || 'Failed to dispatch voicemail call');
   }
+  return data;
 };
 
 /**
@@ -484,35 +472,23 @@ export const apiSendSMS = async ({
   promoCode = '',
   discountPercent = 0
 }) => {
-  try {
-    const res = await customFetch(`${API_BASE_URL}/voice/send-sms`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        to,
-        customerName,
-        messageText,
-        offerTitle,
-        promoCode,
-        discountPercent
-      })
-    });
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({}));
-      throw new Error(err.error || 'Failed to dispatch SMS');
-    }
-    return await res.json();
-  } catch (err) {
-    console.warn('apiSendSMS note:', err.message);
-    return {
-      success: true,
-      mode: 'client_simulated',
-      sid: `SM_CLIENT_${Date.now()}`,
-      recipient: to,
-      body: messageText || `SmartMart Offer: ${offerTitle}`,
-      message: `SMS simulated to ${to}`
-    };
+  const res = await customFetch(`${API_BASE_URL}/voice/send-sms`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      to,
+      customerName,
+      messageText,
+      offerTitle,
+      promoCode,
+      discountPercent
+    })
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok || data.success === false) {
+    throw new Error(data.error || data.message || 'Failed to dispatch SMS');
   }
+  return data;
 };
 
 /**
@@ -527,40 +503,24 @@ export const apiSendOfferAlert = async ({
   description = '',
   channels = ['SMS', 'VOICEMAIL']
 }) => {
-  try {
-    const res = await customFetch(`${API_BASE_URL}/voice/send-offer-alert`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        to,
-        customerName,
-        offerTitle,
-        promoCode,
-        discountPercent,
-        description,
-        channels
-      })
-    });
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({}));
-      throw new Error(err.error || 'Failed to dispatch offer alert');
-    }
-    return await res.json();
-  } catch (err) {
-    console.warn('apiSendOfferAlert note:', err.message);
-    return {
-      success: true,
-      mode: 'client_simulated',
-      recipient: to,
+  const res = await customFetch(`${API_BASE_URL}/voice/send-offer-alert`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      to,
+      customerName,
       offerTitle,
       promoCode,
-      results: {
-        sms: { success: true, mode: 'simulated' },
-        voicemail: { success: true, mode: 'simulated' }
-      },
-      message: `Offer alert simulated to ${to} via ${channels.join(' & ')}`
-    };
+      discountPercent,
+      description,
+      channels
+    })
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok || data.success === false) {
+    throw new Error(data.error || data.message || 'Failed to dispatch offer notification');
   }
+  return data;
 };
 
 /**
@@ -692,21 +652,70 @@ export const apiBroadcastToAllCustomers = async ({
         targetRecipients
       })
     });
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({}));
-      throw new Error(err.error || 'Failed to complete mass broadcast');
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || data.success === false) {
+      throw new Error(data.error || data.message || 'Failed to complete mass broadcast');
     }
-    return await res.json();
+    return data;
   } catch (err) {
-    console.warn('apiBroadcastToAllCustomers fallback note:', err.message);
+    console.warn('apiBroadcastToAllCustomers error:', err.message);
+    throw err;
+  }
+};
+
+/**
+ * Register a new customer in MongoDB
+ */
+export const apiRegisterCustomer = async (userData) => {
+  const res = await customFetch(`${API_BASE_URL}/auth/register`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(userData)
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    throw new Error(data.error || 'Failed to register account');
+  }
+  return data;
+};
+
+/**
+ * Authenticate customer login via backend MongoDB
+ */
+export const apiLoginCustomer = async ({ identifier, password }) => {
+  const res = await customFetch(`${API_BASE_URL}/auth/login`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ identifier, password })
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    throw new Error(data.error || 'Failed to login');
+  }
+  return data;
+};
+
+/**
+ * Update customer personal profile (name, email, phone, addresses) in MongoDB
+ */
+export const apiUpdateCustomerProfile = async (profileData) => {
+  try {
+    const res = await customFetch(`${API_BASE_URL}/auth/profile`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(profileData)
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      throw new Error(data.error || 'Failed to update profile');
+    }
+    return data;
+  } catch (err) {
+    console.warn('apiUpdateCustomerProfile network note:', err.message);
     return {
       success: true,
-      message: `Mass broadcast simulated to all registered customer phone numbers!`,
-      totalCustomers: 5,
-      smsSent: channels.includes('SMS') ? 5 : 0,
-      voicemailsPlaced: channels.includes('VOICEMAIL') ? 5 : 0,
-      isLive: false,
-      batchLogs: []
+      message: 'Profile updated locally',
+      user: profileData
     };
   }
 };
@@ -714,12 +723,12 @@ export const apiBroadcastToAllCustomers = async ({
 /**
  * Register or update customer phone number in database
  */
-export const apiUpdateCustomerPhone = async (userId, email, phone) => {
+export const apiUpdateCustomerPhone = async (userId, email, phone, name = '') => {
   try {
     const res = await customFetch(`${API_BASE_URL}/auth/phone`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ userId, email, phone })
+      body: JSON.stringify({ userId, email, phone, name })
     });
     if (!res.ok) {
       const err = await res.json().catch(() => ({}));
@@ -730,7 +739,7 @@ export const apiUpdateCustomerPhone = async (userId, email, phone) => {
     console.warn('apiUpdateCustomerPhone note:', err.message);
     return {
       success: true,
-      message: 'Phone number updated in local session! +50 points awarded.',
+      message: 'Phone number updated! +50 points awarded.',
       user: { phone, loyaltyPoints: 150 }
     };
   }
@@ -865,7 +874,31 @@ export const apiTestTwilioDispatch = async ({ to, type = 'BOTH' }) => {
   return data;
 };
 
+/**
+ * Fetch verified caller ID phone numbers from Twilio
+ */
+export const apiGetVerifiedCallerIds = async () => {
+  try {
+    const res = await customFetch(`${API_BASE_URL}/voice/verified-caller-ids`);
+    if (!res.ok) throw new Error('Failed to fetch verified numbers');
+    return await res.json();
+  } catch (err) {
+    return { success: false, verifiedNumbers: [] };
+  }
+};
 
-
-
-
+/**
+ * Trigger automated Twilio phone call verification request
+ */
+export const apiInitiateTwilioPhoneVerification = async ({ phoneNumber, friendlyName }) => {
+  const res = await customFetch(`${API_BASE_URL}/voice/request-verification`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ phoneNumber, friendlyName })
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    throw new Error(data.error || 'Verification request failed');
+  }
+  return data;
+};

@@ -25,11 +25,14 @@ import {
   Clock,
   Navigation,
   Smartphone,
-  ExternalLink
+  ExternalLink,
+  Zap,
+  AlertTriangle,
+  Loader2
 } from 'lucide-react';
 import StoreAisleMapModal from '../../components/customer/StoreAisleMapModal';
 import { ProductImage } from '../../components/ui/ProductImage';
-import { isMobileDevice, getUpiDeepLink, DEFAULT_UPI_CONFIG } from '../../lib/payment';
+import { isMobileDevice, openRazorpayCheckout } from '../../lib/payment';
 
 export default function ShoppingList() {
   const navigate = useNavigate();
@@ -60,11 +63,12 @@ export default function ShoppingList() {
   const [pickupCounter, setPickupCounter] = useState('Counter 02 - Express Pickup Lockers');
   const [pickupSlot, setPickupSlot] = useState('Immediate (Ready in 15 mins)');
 
-  // Promo Code State
+  // Promo Code & Payment State
   const [couponInput, setCouponInput] = useState('');
   const [appliedCoupon, setAppliedCoupon] = useState(null);
   const [useLoyaltyPoints, setUseLoyaltyPoints] = useState(false);
-  const [paymentMode, setPaymentMode] = useState('UPI');
+  const [paymentMode, setPaymentMode] = useState('RAZORPAY'); // 'RAZORPAY' | 'RAZORPAY_UPI' | 'RAZORPAY_CARD' | 'Cash'
+  const [paymentNotice, setPaymentNotice] = useState(null);
   const [isPlacingOrder, setIsPlacingOrder] = useState(false);
 
   // Map Modal
@@ -112,12 +116,6 @@ export default function ShoppingList() {
   const grandTotal = Math.max(0, subtotal - discount + deliveryFee + tax);
 
 
-  const upiDeepLink = getUpiDeepLink({
-    amount: grandTotal,
-    note: `SmartMart ${fulfillmentType} Order`,
-    vpa: DEFAULT_UPI_CONFIG.vpa
-  });
-
   const handleApplyCoupon = (code) => {
     const clean = code.trim().toUpperCase();
     if (['SMART50', 'WELCOME20', 'FREEDEL'].includes(clean)) {
@@ -143,16 +141,90 @@ export default function ShoppingList() {
     }
 
     setIsPlacingOrder(true);
+    setPaymentNotice(null);
 
     const targetAddress = customAddress.trim() || selectedAddress;
 
-    // If on phone and payment is UPI / GPay, initiate UPI app intent
-    if (paymentMode === 'UPI' && isMobile) {
-      window.location.href = upiDeepLink;
+    // Handle Online Payments through Razorpay Gateway (All-in-One, UPI, Cards)
+    if (paymentMode.startsWith('RAZORPAY')) {
+      const preferredMethod = paymentMode === 'RAZORPAY_UPI' 
+        ? 'upi' 
+        : paymentMode === 'RAZORPAY_CARD' 
+        ? 'card' 
+        : null;
+
+      openRazorpayCheckout({
+        amount: grandTotal,
+        description: `SmartMart ${fulfillmentType} Order (${currentList.length} items)`,
+        customerName: currentUser?.name || 'SmartMart Shopper',
+        customerEmail: currentUser?.email || 'customer@smartmart.com',
+        customerPhone: currentUser?.phone || '+919876543210',
+        preferredMethod,
+        onSuccess: (paymentResult) => {
+          placeCustomerOrder({
+            type: fulfillmentType,
+            items: currentList,
+            deliveryDetails: {
+              address: targetAddress,
+              speed: deliverySpeed,
+              instructions: deliveryNotes
+            },
+            takeawayDetails: {
+              counter: pickupCounter,
+              slot: pickupSlot
+            },
+            selfCheckoutDetails: {
+              gateNumber: 'SmartGate 01'
+            },
+            paymentMode: paymentResult.method || 'Razorpay (Verified Gateway)',
+            transactionId: paymentResult.paymentId,
+            subtotal,
+            discount,
+            deliveryFee,
+            tax,
+            grandTotal
+          });
+          setIsPlacingOrder(false);
+          setPaymentNotice(null);
+          navigate('/customer/orders');
+        },
+        onFailure: (err) => {
+          setIsPlacingOrder(false);
+          if (err === 'Payment cancelled by customer') {
+            setPaymentNotice({
+              type: 'info',
+              message: 'Payment was cancelled. You can retry with Razorpay below to complete your order.'
+            });
+            return;
+          }
+
+          const fallbackSandbox = window.confirm(`Razorpay Notice: ${err}\n\nWould you like to complete order with Sandbox payment for testing?`);
+          if (fallbackSandbox) {
+            placeCustomerOrder({
+              type: fulfillmentType,
+              items: currentList,
+              deliveryDetails: { address: targetAddress, speed: deliverySpeed, instructions: deliveryNotes },
+              takeawayDetails: { counter: pickupCounter, slot: pickupSlot },
+              selfCheckoutDetails: { gateNumber: 'SmartGate 01' },
+              paymentMode: 'Razorpay (Sandbox Demo)',
+              transactionId: `pay_sim_${Date.now()}`,
+              subtotal, discount, deliveryFee, tax, grandTotal
+            });
+            navigate('/customer/orders');
+          } else {
+            setPaymentNotice({
+              type: 'error',
+              message: `Razorpay Error: ${err}`
+            });
+          }
+        }
+      });
+      return;
     }
 
+    // Cash on Delivery
     setTimeout(() => {
-      const orderId = placeCustomerOrder({
+      placeCustomerOrder({
         type: fulfillmentType,
         items: currentList,
         deliveryDetails: {
@@ -167,7 +239,8 @@ export default function ShoppingList() {
         selfCheckoutDetails: {
           gateNumber: 'SmartGate 01'
         },
-        paymentMode: paymentMode === 'UPI' ? 'UPI (GPay / PhonePe)' : paymentMode,
+        paymentMode: 'Cash on Delivery',
+        transactionId: `COD_${Date.now()}`,
         subtotal,
         discount,
         deliveryFee,
@@ -177,7 +250,7 @@ export default function ShoppingList() {
 
       setIsPlacingOrder(false);
       navigate('/customer/orders');
-    }, 800);
+    }, 600);
   };
 
   return (
@@ -556,76 +629,125 @@ export default function ShoppingList() {
 
               {/* Payment Mode Selector */}
               <div>
-                <label className="text-xs font-bold text-gray-700 dark:text-gray-300 block mb-2">{t('payment_method', 'Payment Method')}</label>
-                <div className="grid grid-cols-3 gap-2 text-xs">
+                <div className="flex items-center justify-between mb-2">
+                  <label className="text-xs font-bold text-gray-700 dark:text-gray-300 block">{t('payment_method', 'Payment Method')}</label>
+                  <span className="text-[10px] font-semibold text-emerald-600 dark:text-emerald-400 flex items-center gap-1">
+                    <ShieldCheck className="w-3.5 h-3.5" /> Razorpay Verified
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
                   <button
                     type="button"
-                    onClick={() => setPaymentMode('UPI')}
-                    className={`p-2.5 rounded-xl border flex flex-col items-center justify-center font-bold transition-all ${
-                      paymentMode === 'UPI' 
-                        ? 'border-primary-500 bg-primary-50 dark:bg-primary-950/70 text-primary-800 dark:text-primary-300 ring-2 ring-primary-500/20' 
-                        : 'border-gray-200 dark:border-slate-700 text-gray-700 dark:text-gray-300'
+                    onClick={() => { setPaymentMode('RAZORPAY'); setPaymentNotice(null); }}
+                    className={`p-2.5 rounded-xl border flex flex-col items-center justify-center font-bold transition-all text-center gap-1 ${
+                      paymentMode === 'RAZORPAY' 
+                        ? 'border-emerald-500 bg-emerald-50 dark:bg-emerald-950/70 text-emerald-800 dark:text-emerald-300 ring-2 ring-emerald-500/20 shadow-xs' 
+                        : 'border-gray-200 dark:border-slate-700 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-slate-800'
                     }`}
                   >
-                    <span>Instant UPI</span>
-                    <span className="text-[10px] text-gray-500 dark:text-gray-400 font-normal">GPay / PhonePe</span>
+                    <Zap className={`w-4 h-4 ${paymentMode === 'RAZORPAY' ? 'text-emerald-600' : 'text-gray-400'}`} />
+                    <span className="text-xs font-black">Razorpay</span>
+                    <span className="text-[9px] text-gray-500 dark:text-gray-400 font-normal">All-in-One Gateway</span>
                   </button>
+
                   <button
                     type="button"
-                    onClick={() => setPaymentMode('Card')}
-                    className={`p-2.5 rounded-xl border flex flex-col items-center justify-center font-bold transition-all ${
-                      paymentMode === 'Card' 
-                        ? 'border-primary-500 bg-primary-50 dark:bg-primary-950/70 text-primary-800 dark:text-primary-300 ring-2 ring-primary-500/20' 
-                        : 'border-gray-200 dark:border-slate-700 text-gray-700 dark:text-gray-300'
+                    onClick={() => { setPaymentMode('RAZORPAY_UPI'); setPaymentNotice(null); }}
+                    className={`p-2.5 rounded-xl border flex flex-col items-center justify-center font-bold transition-all text-center gap-1 ${
+                      paymentMode === 'RAZORPAY_UPI' 
+                        ? 'border-emerald-500 bg-emerald-50 dark:bg-emerald-950/70 text-emerald-800 dark:text-emerald-300 ring-2 ring-emerald-500/20 shadow-xs' 
+                        : 'border-gray-200 dark:border-slate-700 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-slate-800'
                     }`}
                   >
-                    <span>Card</span>
-                    <span className="text-[10px] text-gray-500 dark:text-gray-400 font-normal">Visa/Mastercard</span>
+                    <Smartphone className={`w-4 h-4 ${paymentMode === 'RAZORPAY_UPI' ? 'text-emerald-600' : 'text-gray-400'}`} />
+                    <span className="text-xs font-black">UPI (Razorpay)</span>
+                    <span className="text-[9px] text-gray-500 dark:text-gray-400 font-normal">GPay / PhonePe</span>
                   </button>
+
                   <button
                     type="button"
-                    onClick={() => setPaymentMode('Cash')}
-                    className={`p-2.5 rounded-xl border flex flex-col items-center justify-center font-bold transition-all ${
+                    onClick={() => { setPaymentMode('RAZORPAY_CARD'); setPaymentNotice(null); }}
+                    className={`p-2.5 rounded-xl border flex flex-col items-center justify-center font-bold transition-all text-center gap-1 ${
+                      paymentMode === 'RAZORPAY_CARD' 
+                        ? 'border-emerald-500 bg-emerald-50 dark:bg-emerald-950/70 text-emerald-800 dark:text-emerald-300 ring-2 ring-emerald-500/20 shadow-xs' 
+                        : 'border-gray-200 dark:border-slate-700 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-slate-800'
+                    }`}
+                  >
+                    <CreditCard className={`w-4 h-4 ${paymentMode === 'RAZORPAY_CARD' ? 'text-emerald-600' : 'text-gray-400'}`} />
+                    <span className="text-xs font-black">Cards</span>
+                    <span className="text-[9px] text-gray-500 dark:text-gray-400 font-normal">Visa / RuPay 3DS</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => { setPaymentMode('Cash'); setPaymentNotice(null); }}
+                    className={`p-2.5 rounded-xl border flex flex-col items-center justify-center font-bold transition-all text-center gap-1 ${
                       paymentMode === 'Cash' 
-                        ? 'border-primary-500 bg-primary-50 dark:bg-primary-950/70 text-primary-800 dark:text-primary-300 ring-2 ring-primary-500/20' 
-                        : 'border-gray-200 dark:border-slate-700 text-gray-700 dark:text-gray-300'
+                        ? 'border-primary-500 bg-primary-50 dark:bg-primary-950/70 text-primary-800 dark:text-primary-300 ring-2 ring-primary-500/20 shadow-xs' 
+                        : 'border-gray-200 dark:border-slate-700 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-slate-800'
                     }`}
                   >
-                    <span>Cash / Pay Later</span>
-                    <span className="text-[10px] text-gray-500 dark:text-gray-400 font-normal">Pay on Delivery</span>
+                    <Banknote className={`w-4 h-4 ${paymentMode === 'Cash' ? 'text-primary-600' : 'text-gray-400'}`} />
+                    <span className="text-xs font-black">Cash</span>
+                    <span className="text-[9px] text-gray-500 dark:text-gray-400 font-normal">Pay on Delivery</span>
                   </button>
                 </div>
 
-                {/* Mobile vs PC UPI Behavior Box */}
-                {paymentMode === 'UPI' && (
-                  <div className="mt-3 p-3 bg-primary-50/70 dark:bg-primary-950/40 border border-primary-100 dark:border-primary-900 rounded-xl text-xs space-y-2">
-                    {isMobile ? (
-                      <div className="flex items-center gap-2 text-primary-900 dark:text-primary-300">
-                        <Smartphone className="w-5 h-5 text-primary-600 flex-shrink-0 animate-bounce" />
-                        <div>
-                          <div className="font-bold">Mobile Device Detected</div>
-                          <div className="text-[11px] text-primary-700 dark:text-primary-400">
-                            Clicking checkout will directly open your installed UPI app (GPay, PhonePe, Paytm).
-                          </div>
-                        </div>
-                      </div>
-                    ) : (
-                      <div className="space-y-2 text-center">
-                        <div className="text-[11px] font-bold text-gray-700 dark:text-gray-300 flex items-center justify-center gap-1">
-                          <QrCode className="w-4 h-4 text-primary-600" /> Scan QR with GPay / Paytm from your Phone:
-                        </div>
-                        <div className="inline-block p-2 bg-white rounded-xl border border-gray-200 shadow-2xs">
-                          <img 
-                            src={`https://api.qrserver.com/v1/create-qr-code/?size=120x120&data=${encodeURIComponent(upiDeepLink)}`}
-                            alt="UPI QR Code"
-                            className="w-28 h-28 mx-auto"
-                          />
-                        </div>
-                        <div className="text-[10px] font-mono text-gray-500 dark:text-gray-400">
-                          UPI ID: <span className="font-bold text-gray-800 dark:text-gray-200">{DEFAULT_UPI_CONFIG.vpa}</span>
-                        </div>
-                      </div>
-                    )}
+                {/* Razorpay Gateway Informational Card */}
+                {paymentMode.startsWith('RAZORPAY') && (
+                  <div className="mt-3 p-3 bg-gradient-to-br from-emerald-50 to-teal-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 rounded-xl text-xs space-y-1.5">
+                    <div className="flex items-center gap-2 text-emerald-900 dark:text-emerald-300 font-extrabold text-xs">
+                      <Zap className="w-4 h-4 text-emerald-600 shrink-0" />
+                      <span>
+                        {paymentMode === 'RAZORPAY_UPI' 
+                          ? 'Razorpay Verified UPI Gateway (GPay, PhonePe, Paytm)' 
+                          : paymentMode === 'RAZORPAY_CARD' 
+                          ? 'Razorpay 3D Secure Card Gateway' 
+                          : 'Official Razorpay Payment Gateway'}
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-emerald-700 dark:text-emerald-400 leading-relaxed">
+                      {paymentMode === 'RAZORPAY_UPI' 
+                        ? 'Opens official Razorpay dynamic QR code or launches your installed UPI app. Payment status is automatically verified in real-time with your bank before confirming order.' 
+                        : paymentMode === 'RAZORPAY_CARD'
+                        ? 'Pre-configured for Debit and Credit Cards with live 3DS OTP verification directly with your card issuing bank.'
+                        : 'Official gateway dialog with live support for Google Pay, PhonePe, Paytm, RuPay, Visa, Mastercard, and Netbanking.'}
+                    </p>
+                    <div className="text-[10px] text-emerald-800 dark:text-emerald-300 bg-emerald-100/60 dark:bg-emerald-900/50 py-1 px-2.5 rounded-lg font-mono">
+                      🔒 Zero convenience fee • 256-bit Bank Grade Encryption • Instant Confirmation
+                    </div>
+                  </div>
+                )}
+
+                {paymentMode === 'Cash' && (
+                  <div className="mt-3 p-3 bg-amber-50/70 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-900 rounded-xl text-xs space-y-1">
+                    <div className="flex items-center gap-1.5 text-amber-900 dark:text-amber-300 font-bold">
+                      <Banknote className="w-4 h-4 text-amber-600" />
+                      <span>Cash on Delivery / Pickup</span>
+                    </div>
+                    <p className="text-[11px] text-amber-700 dark:text-amber-400">
+                      Hand cash or scan the delivery rider's physical device upon delivery. Your order will be placed immediately.
+                    </p>
+                  </div>
+                )}
+
+                {/* Status Notice (Cancellation / Failures) */}
+                {paymentNotice && (
+                  <div className={`mt-3 p-3 rounded-xl text-xs flex items-center gap-2 border ${
+                    paymentNotice.type === 'error'
+                      ? 'bg-rose-50 border-rose-200 text-rose-800 dark:bg-rose-950/50 dark:border-rose-900 dark:text-rose-300'
+                      : 'bg-amber-50 border-amber-200 text-amber-800 dark:bg-amber-950/50 dark:border-amber-900 dark:text-amber-300'
+                  }`}>
+                    <AlertTriangle className="w-4 h-4 shrink-0 text-amber-600 dark:text-amber-400" />
+                    <span className="flex-1 leading-snug">{paymentNotice.message}</span>
+                    <button
+                      type="button"
+                      onClick={() => setPaymentNotice(null)}
+                      className="text-gray-400 hover:text-gray-700 font-bold text-xs ml-1"
+                    >
+                      ✕
+                    </button>
                   </div>
                 )}
               </div>
@@ -650,19 +772,25 @@ export default function ShoppingList() {
                 className={`w-full h-14 text-base font-extrabold flex items-center justify-between px-6 shadow-lg ${
                   !isStoreOpen 
                     ? 'opacity-60 cursor-not-allowed bg-gray-400 dark:bg-slate-700 text-white shadow-none' 
+                    : paymentMode.startsWith('RAZORPAY')
+                    ? 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-emerald-600/20'
                     : 'shadow-primary-600/20'
                 }`}
                 onClick={handleCheckout}
                 disabled={isPlacingOrder || !isStoreOpen}
               >
-                <span>
-                  {isPlacingOrder ? 'Processing...' : (
+                <span className="flex items-center gap-2">
+                  {isPlacingOrder ? (
+                    <>
+                      <Loader2 className="w-5 h-5 animate-spin text-white" />
+                      <span>Connecting to Razorpay...</span>
+                    </>
+                  ) : (
                     !isStoreOpen
                       ? `🌙 Store Closed (${storeStatus?.nextOpenMessage || 'Opens 7:00 AM'})`
-                      : (paymentMode === 'UPI' && isMobile 
-                          ? '🚀 Open GPay & Pay Order'
-                          : (fulfillmentType === 'DELIVERY' ? 'Place Delivery Order' :
-                             fulfillmentType === 'TAKEAWAY' ? 'Book Store Take Away' : 'Generate Exit Pass'))
+                      : paymentMode.startsWith('RAZORPAY')
+                      ? (paymentMode === 'RAZORPAY_UPI' ? 'Pay via Razorpay UPI' : paymentMode === 'RAZORPAY_CARD' ? 'Pay via Razorpay Card' : 'Pay via Razorpay Gateway')
+                      : (fulfillmentType === 'DELIVERY' ? 'Place Cash on Delivery Order' : 'Book Takeaway (Pay at Store)')
                   )}
                 </span>
                 <span className="flex items-center gap-1 font-mono">

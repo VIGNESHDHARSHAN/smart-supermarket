@@ -1,9 +1,10 @@
+const path = require('path');
+try { require('dotenv').config({ path: path.resolve(__dirname, '.env') }); } catch (e) {}
 const dns = require('dns');
 try { dns.setServers(['8.8.8.8', '8.8.4.4', '1.1.1.1']); } catch (e) {}
 const express = require('express');
 const cors = require('cors');
 const { connectDB } = require('./config/db');
-try { require('dotenv').config({ path: require('path').resolve(__dirname, '.env') }); } catch (e) {}
 
 const app = express();
 
@@ -35,7 +36,6 @@ app.get('/api/health', (req, res) => {
 });
 
 // Serve compiled React frontend in production
-const path = require('path');
 const fs = require('fs');
 const distPath = [
   path.join(__dirname, '../frontend/dist'),
@@ -55,17 +55,16 @@ if (distPath) {
 
 const PORT = process.env.PORT || 5000;
 
-// Connect Database and Start Server
-connectDB()
-  .then(() => {
-    app.listen(PORT, () => {
-      console.log(`==================================================`);
-      console.log(`🛒 Smart Supermarket Backend API running on port ${PORT}`);
-      console.log(`📡 Health Check: http://localhost:${PORT}/api/health`);
-      console.log(`🚀 MERN Stack Ready for CRUD operations with MongoDB`);
-      console.log(`==================================================`);
-    });
-  })
-  .catch((err) => {
-    console.error('Failed to start server:', err);
-  });
+// Start Server immediately so API endpoints are responsive
+const server = app.listen(PORT, () => {
+  console.log(`==================================================`);
+  console.log(`🛒 Smart Supermarket Backend API running on port ${PORT}`);
+  console.log(`📡 Health Check: http://localhost:${PORT}/api/health`);
+  console.log(`🚀 MERN Stack Ready for CRUD operations with MongoDB`);
+  console.log(`==================================================`);
+});
+
+// Connect Database asynchronously in background
+connectDB().catch((err) => {
+  console.error('⚠️ MongoDB connection issue (operating with cache/fallback):', err);
+});

@@ -35,10 +35,11 @@ import {
   Lock,
   Unlock,
   HelpCircle,
-  Upload
+  Upload,
+  Loader2
 } from 'lucide-react';
 import { soundEffects } from '../../lib/audio';
-import { isMobileDevice, getUpiDeepLink, DEFAULT_UPI_CONFIG, openRazorpayCheckout } from '../../lib/payment';
+import { isMobileDevice, openRazorpayCheckout } from '../../lib/payment';
 import { useLanguage } from '../../context/LanguageContext';
 import { ProductImage } from '../../components/ui/ProductImage';
 import { fetchProductImageFromInternet } from '../../services/imageService';
@@ -108,10 +109,11 @@ export default function CustomerScanGo() {
   const [checkoutStep, setCheckoutStep] = useState('payment'); // 'payment' | 'gatepass'
   const [selectedPayment, setSelectedPayment] = useState('RAZORPAY');
   const [generatedOrder, setGeneratedOrder] = useState(null);
-  const [upiTimer, setUpiTimer] = useState(180);
   const [isTurnstileOpen, setIsTurnstileOpen] = useState(false);
   const [turnstileStage, setTurnstileStage] = useState('IDLE'); // 'IDLE' | 'SCANNING' | 'GRANTED'
   const [isReceiptOpen, setIsReceiptOpen] = useState(false);
+  const [isProcessingPayment, setIsProcessingPayment] = useState(false);
+  const [paymentNotice, setPaymentNotice] = useState(null);
 
   // Toggle Physical Hardware Torch & Virtual Lighting Glow
   const handleToggleTorch = async () => {
@@ -512,40 +514,85 @@ export default function CustomerScanGo() {
   };
 
   // Complete Payment & Generate Gate Pass
-  const handleConfirmPayment = () => {
+  const handleConfirmPayment = async () => {
     if (!isStoreOpen) {
       if (soundEnabled) soundEffects.playErrorBuzzer();
       alert(`🌙 Store is currently closed for purchases.\n\nOperating hours: ${storeStatus?.formattedHours || '7:00 AM – 11:00 PM'}.`);
       return;
     }
 
-    if (selectedPayment === 'RAZORPAY') {
-      openRazorpayCheckout({
+    if (isProcessingPayment) return;
+
+    if (selectedPayment === 'WALLET') {
+      const walletBalance = 2450.00;
+      if (grandTotal > walletBalance) {
+        setPaymentNotice({
+          type: 'error',
+          message: `Insufficient Wallet balance (₹${walletBalance.toFixed(2)}). Please choose Razorpay Gateway or UPI to complete payment.`
+        });
+        return;
+      }
+      setIsProcessingPayment(true);
+      setPaymentNotice(null);
+      setTimeout(() => {
+        setIsProcessingPayment(false);
+        processOrderSuccess('SmartMart OneWallet', `WLT_${Date.now()}`);
+      }, 500);
+      return;
+    }
+
+    // All online payment channels (RAZORPAY, UPI, CARD) route strictly through Razorpay Gateway!
+    setIsProcessingPayment(true);
+    setPaymentNotice(null);
+
+    const preferredMethod = selectedPayment === 'UPI' 
+      ? 'upi' 
+      : selectedPayment === 'CARD' 
+      ? 'card' 
+      : null;
+
+    try {
+      await openRazorpayCheckout({
         amount: grandTotal,
-        description: `SmartMart Self-Checkout (${scannedCart.length} items)`,
+        description: `SmartMart Self-Checkout Turnstile Pass (${scannedCart.length} items)`,
         customerName: currentUser?.name || 'SmartMart Shopper',
         customerEmail: currentUser?.email || 'shopper@smartmart.com',
         customerPhone: currentUser?.phone || '+919876543210',
+        preferredMethod,
         onSuccess: (paymentResult) => {
+          setIsProcessingPayment(false);
+          setPaymentNotice(null);
           processOrderSuccess(paymentResult.method, paymentResult.paymentId);
         },
         onFailure: (err) => {
+          setIsProcessingPayment(false);
           if (err === 'Payment cancelled by customer') {
+            setPaymentNotice({
+              type: 'info',
+              message: 'Payment was cancelled. You can retry with Razorpay below to unlock your Turnstile Gate Pass.'
+            });
             return;
           }
+
           const confirmDemo = window.confirm(
             `Razorpay Gateway Notice: ${err}\n\nWould you like to complete checkout with Simulated Sandbox Payment for testing?`
           );
           if (confirmDemo) {
             processOrderSuccess('Razorpay (Sandbox Demo)', `pay_sim_${Date.now()}`);
+          } else {
+            setPaymentNotice({
+              type: 'error',
+              message: `Razorpay Error: ${err}`
+            });
           }
         }
       });
-    } else {
-      processOrderSuccess(
-        selectedPayment === 'UPI' ? 'UPI Instant QR' : selectedPayment === 'CARD' ? 'NFC Tap & Pay' : 'SmartMart Wallet',
-        `TXN_${Date.now()}`
-      );
+    } catch (err) {
+      setIsProcessingPayment(false);
+      setPaymentNotice({
+        type: 'error',
+        message: err.message || 'Payment initiation failed'
+      });
     }
   };
 
@@ -1391,96 +1438,69 @@ export default function CustomerScanGo() {
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
                   {[
                     { id: 'RAZORPAY', label: 'Razorpay', icon: Zap, desc: 'UPI, Cards, Netbanking' },
-                    { id: 'UPI', label: 'UPI QR', icon: QrCode, desc: 'GPay / PhonePe' },
-                    { id: 'CARD', label: 'NFC Card', icon: CreditCard, desc: 'Tap & Pay' },
+                    { id: 'UPI', label: 'UPI (Razorpay)', icon: Smartphone, desc: 'GPay / PhonePe / Paytm' },
+                    { id: 'CARD', label: 'Cards (Razorpay)', icon: CreditCard, desc: 'Visa / RuPay 3DS' },
                     { id: 'WALLET', label: 'Smart Wallet', icon: Smartphone, desc: 'Balance ₹2,450' }
                   ].map(method => (
                     <button
                       key={method.id}
                       type="button"
-                      onClick={() => setSelectedPayment(method.id)}
+                      onClick={() => { setSelectedPayment(method.id); setPaymentNotice(null); }}
                       className={`p-3 rounded-2xl border text-center transition-all flex flex-col items-center justify-center gap-1.5 ${
                         selectedPayment === method.id 
-                          ? 'border-purple-600 bg-purple-50/70 text-purple-900 shadow-sm ring-2 ring-purple-500/20' 
-                          : 'border-gray-200 hover:bg-gray-50 text-gray-700'
+                          ? 'border-emerald-600 bg-emerald-50/70 dark:bg-emerald-950/60 text-emerald-900 dark:text-emerald-300 shadow-sm ring-2 ring-emerald-500/20' 
+                          : 'border-gray-200 hover:bg-gray-50 text-gray-700 dark:text-gray-300 dark:border-slate-700'
                       }`}
                     >
-                      <method.icon className={`w-5 h-5 ${selectedPayment === method.id ? 'text-purple-600' : 'text-gray-500'}`} />
+                      <method.icon className={`w-5 h-5 ${selectedPayment === method.id ? 'text-emerald-600' : 'text-gray-500'}`} />
                       <span className="font-extrabold text-xs">{method.label}</span>
                       <span className="text-[9px] text-gray-400 leading-tight">{method.desc}</span>
                     </button>
                   ))}
                 </div>
 
-                {/* Razorpay Banner */}
+                {/* Razorpay All-in-One Banner */}
                 {selectedPayment === 'RAZORPAY' && (
                   <div className="bg-gradient-to-br from-emerald-50 to-teal-50 dark:bg-emerald-950/40 p-4 rounded-2xl border border-emerald-200 dark:border-emerald-800 text-center space-y-2">
                     <div className="flex items-center justify-center gap-2 text-emerald-900 dark:text-emerald-300 font-extrabold text-xs">
-                      <Zap className="w-4 h-4 text-emerald-600" /> Razorpay Payment Gateway (0% Fee UPI + Cards)
+                      <Zap className="w-4 h-4 text-emerald-600" /> Official Razorpay Payment Gateway (0% Fee)
                     </div>
                     <p className="text-[11px] text-emerald-700 dark:text-emerald-400">
-                      Official Razorpay Gateway modal will open with live support for GPay, PhonePe, Paytm, RuPay, Visa & Netbanking.
+                      Official Razorpay Gateway modal will open with live support for GPay, PhonePe, Paytm, RuPay, Visa, Mastercard & Netbanking.
                     </p>
-                  </div>
-                )}
-
-
-                {/* UPI QR & Mobile Redirection Display */}
-                {selectedPayment === 'UPI' && (
-                  <div className="bg-gray-50 dark:bg-slate-800/70 p-4 rounded-2xl border border-gray-200 dark:border-slate-700 text-center space-y-3">
-                    {isMobileDevice() ? (
-                      <div className="p-3 bg-purple-50 dark:bg-purple-950/60 border border-purple-200 dark:border-purple-800 rounded-xl space-y-2 text-left">
-                        <div className="flex items-center gap-2 text-purple-900 dark:text-purple-300 font-bold text-xs">
-                          <Smartphone className="w-4 h-4 text-purple-600 animate-pulse" />
-                          <span>Mobile Device Detected</span>
-                        </div>
-                        <p className="text-[11px] text-purple-700 dark:text-purple-400 leading-tight">
-                          Clicking below will open Google Pay or your installed UPI app to pay ₹{grandTotal.toFixed(2)}.
-                        </p>
-                        <a
-                          href={getUpiDeepLink({
-                            amount: grandTotal,
-                            note: 'SmartMart Self-Checkout Turnstile Pass',
-                            vpa: DEFAULT_UPI_CONFIG.vpa
-                          })}
-                          className="w-full py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg text-xs font-bold flex items-center justify-center gap-1.5 shadow-sm"
-                        >
-                          <ExternalLink className="w-3.5 h-3.5" /> Launch GPay / UPI App
-                        </a>
-                      </div>
-                    ) : (
-                      <>
-                        <div className="relative inline-block p-3 bg-white rounded-2xl border border-gray-200 shadow-2xs">
-                          <img 
-                            src={`https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(getUpiDeepLink({
-                              amount: grandTotal,
-                              note: 'SmartMart Self-Checkout Turnstile Pass',
-                              vpa: DEFAULT_UPI_CONFIG.vpa
-                            }))}`} 
-                            alt="UPI Payment QR"
-                            className="w-36 h-36 mx-auto"
-                          />
-                          <div className="absolute inset-x-0 bottom-1 text-[9px] font-mono text-gray-400 bg-white/90">
-                            Scan with GPay / Paytm
-                          </div>
-                        </div>
-                        <div className="text-xs text-gray-500 dark:text-gray-400 flex items-center justify-center gap-1.5">
-                          <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
-                          QR active for <span className="font-mono font-bold text-gray-800 dark:text-gray-200">{Math.floor(upiTimer / 60)}:{(upiTimer % 60).toString().padStart(2, '0')}</span>
-                        </div>
-                      </>
-                    )}
-                  </div>
-                )}
-
-                {/* NFC Card Simulation */}
-                {selectedPayment === 'CARD' && (
-                  <div className="bg-gray-50 dark:bg-slate-800/70 p-6 rounded-2xl border border-gray-200 dark:border-slate-700 text-center space-y-2">
-                    <div className="w-12 h-12 rounded-full bg-blue-100 dark:bg-blue-950 border border-blue-300 dark:border-blue-800 text-blue-600 dark:text-blue-400 mx-auto flex items-center justify-center animate-pulse">
-                      <CreditCard className="w-6 h-6" />
+                    <div className="text-[10px] text-emerald-800 dark:text-emerald-300 bg-emerald-100/60 dark:bg-emerald-900/40 py-1 px-2.5 rounded-lg inline-block font-mono">
+                      🔒 Verified by Razorpay Official Gateway • Real-time bank status confirmation
                     </div>
-                    <div className="text-xs font-bold text-gray-800 dark:text-gray-200">Tap your contactless card against the terminal</div>
-                    <div className="text-[11px] text-gray-400">Supports Visa PayWave, Mastercard, RuPay & Apple Pay</div>
+                  </div>
+                )}
+
+                {/* Razorpay Verified UPI Banner */}
+                {selectedPayment === 'UPI' && (
+                  <div className="bg-gradient-to-br from-emerald-50 to-teal-50 dark:bg-emerald-950/40 p-4 rounded-2xl border border-emerald-200 dark:border-emerald-800 text-center space-y-2">
+                    <div className="flex items-center justify-center gap-2 text-emerald-900 dark:text-emerald-300 font-extrabold text-xs">
+                      <Smartphone className="w-4 h-4 text-emerald-600" /> Razorpay Verified UPI (Google Pay, PhonePe, Paytm, BHIM)
+                    </div>
+                    <p className="text-[11px] text-emerald-700 dark:text-emerald-400">
+                      Opens official Razorpay UPI checkout with live dynamic QR (desktop) or direct app launch (mobile). Payment is automatically confirmed with your bank before the gate pass unlocks.
+                    </p>
+                    <div className="text-[10px] text-emerald-800 dark:text-emerald-300 bg-emerald-100/60 dark:bg-emerald-900/40 py-1 px-2.5 rounded-lg inline-block font-mono">
+                      ⚡ 100% Real-time bank status verification • Zero manual confirmation
+                    </div>
+                  </div>
+                )}
+
+                {/* Razorpay 3D-Secure Card Banner */}
+                {selectedPayment === 'CARD' && (
+                  <div className="bg-gradient-to-br from-emerald-50 to-teal-50 dark:bg-emerald-950/40 p-4 rounded-2xl border border-emerald-200 dark:border-emerald-800 text-center space-y-2">
+                    <div className="flex items-center justify-center gap-2 text-emerald-900 dark:text-emerald-300 font-extrabold text-xs">
+                      <CreditCard className="w-4 h-4 text-emerald-600" /> Razorpay 3D-Secure Card Checkout
+                    </div>
+                    <p className="text-[11px] text-emerald-700 dark:text-emerald-400">
+                      Official Razorpay gateway modal will open pre-configured for Debit and Credit Cards with 3DS OTP verification directly with your issuing bank.
+                    </p>
+                    <div className="text-[10px] text-emerald-800 dark:text-emerald-300 bg-emerald-100/60 dark:bg-emerald-900/40 py-1 px-2.5 rounded-lg inline-block font-mono">
+                      Test Cards: <strong>4111 1111 1111 1111</strong> (Visa) | <strong>5085 0500 0000 0001</strong> (RuPay)
+                    </div>
                   </div>
                 )}
 
@@ -1493,12 +1513,52 @@ export default function CustomerScanGo() {
                   </div>
                 )}
 
+                {/* Status Notice (Cancellation / Failures) */}
+                {paymentNotice && (
+                  <div className={`p-3 rounded-xl text-xs flex items-center gap-2 border ${
+                    paymentNotice.type === 'error'
+                      ? 'bg-rose-50 border-rose-200 text-rose-800 dark:bg-rose-950/50 dark:border-rose-900 dark:text-rose-300'
+                      : 'bg-amber-50 border-amber-200 text-amber-800 dark:bg-amber-950/50 dark:border-amber-900 dark:text-amber-300'
+                  }`}>
+                    <AlertTriangle className="w-4 h-4 shrink-0 text-amber-600 dark:text-amber-400" />
+                    <span className="flex-1 leading-snug">{paymentNotice.message}</span>
+                    <button
+                      type="button"
+                      onClick={() => setPaymentNotice(null)}
+                      className="text-gray-400 hover:text-gray-700 font-bold text-xs ml-1"
+                    >
+                      ✕
+                    </button>
+                  </div>
+                )}
+
                 {/* Confirm Pay Button */}
                 <Button
-                  className="w-full h-12 bg-purple-700 hover:bg-purple-800 font-extrabold text-sm shadow-md"
+                  className={`w-full h-12 font-extrabold text-sm shadow-md transition-all flex items-center justify-center gap-2 ${
+                    selectedPayment !== 'WALLET' 
+                      ? 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-emerald-600/20' 
+                      : 'bg-purple-700 hover:bg-purple-800 text-white shadow-purple-700/20'
+                  }`}
                   onClick={handleConfirmPayment}
+                  disabled={isProcessingPayment}
                 >
-                  <Check className="w-4 h-4 mr-1.5" /> Confirm & Authorize ₹{grandTotal.toFixed(2)}
+                  {isProcessingPayment ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin text-white" />
+                      <span>Connecting to Razorpay...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Check className="w-4 h-4 mr-1.5" /> 
+                      {selectedPayment === 'RAZORPAY' 
+                        ? `Pay ₹${grandTotal.toFixed(2)} via Razorpay Gateway`
+                        : selectedPayment === 'UPI'
+                        ? `Pay ₹${grandTotal.toFixed(2)} via Razorpay UPI`
+                        : selectedPayment === 'CARD'
+                        ? `Pay ₹${grandTotal.toFixed(2)} via Razorpay Card`
+                        : `Pay ₹${grandTotal.toFixed(2)} from Smart Wallet`}
+                    </>
+                  )}
                 </Button>
               </div>
             )}

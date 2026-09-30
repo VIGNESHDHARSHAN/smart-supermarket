@@ -33,7 +33,8 @@ import { Input } from '../../components/ui/Input';
 import { 
   apiGetRegisteredCustomers, 
   apiUpdateCustomerRecord,
-  apiGetOfferCampaigns 
+  apiGetOfferCampaigns,
+  apiGetVoiceStatus
 } from '../../services/api';
 import { soundEffects } from '../../lib/audio';
 import OfferAlertModal from '../../components/voice/OfferAlertModal';
@@ -62,19 +63,24 @@ export default function StaffCustomers() {
   const [showNotifyModal, setShowNotifyModal] = useState(false);
   const [showMassBroadcastModal, setShowMassBroadcastModal] = useState(false);
   const [campaigns, setCampaigns] = useState([]);
+  const [voiceStatus, setVoiceStatus] = useState(null);
 
   // Edit Customer Modal State
   const [editingCustomer, setEditingCustomer] = useState(null);
+  const [editName, setEditName] = useState('');
+  const [editEmail, setEditEmail] = useState('');
   const [editPhone, setEditPhone] = useState('');
+  const [editAddress, setEditAddress] = useState('');
   const [editPoints, setEditPoints] = useState(100);
   const [isSavingEdit, setIsSavingEdit] = useState(false);
 
   const loadData = async () => {
     setIsLoading(true);
     try {
-      const [res, camps] = await Promise.all([
+      const [res, camps, vStatus] = await Promise.all([
         apiGetRegisteredCustomers(),
-        apiGetOfferCampaigns()
+        apiGetOfferCampaigns(),
+        apiGetVoiceStatus().catch(() => null)
       ]);
       if (res?.customers) {
         setCustomers(res.customers);
@@ -83,6 +89,7 @@ export default function StaffCustomers() {
         setStats(res.stats);
       }
       if (camps) setCampaigns(camps);
+      if (vStatus) setVoiceStatus(vStatus);
     } catch (err) {
       console.warn('Error fetching customers:', err);
     } finally {
@@ -123,7 +130,10 @@ export default function StaffCustomers() {
   // Open Edit Modal
   const handleOpenEdit = (customer) => {
     setEditingCustomer(customer);
+    setEditName(customer.name || '');
+    setEditEmail(customer.email || '');
     setEditPhone(customer.phone || '');
+    setEditAddress(customer.address || '');
     setEditPoints(customer.loyaltyPoints || 100);
   };
 
@@ -133,18 +143,28 @@ export default function StaffCustomers() {
     if (!editingCustomer) return;
     setIsSavingEdit(true);
     try {
-      const res = await apiUpdateCustomerRecord(editingCustomer.id, {
-        phone: editPhone,
+      const updates = {
+        name: editName.trim(),
+        email: editEmail.toLowerCase().trim(),
+        phone: editPhone.trim(),
+        address: editAddress.trim(),
         loyaltyPoints: Number(editPoints)
-      });
+      };
 
-      // Update local state
+      const res = await apiUpdateCustomerRecord(editingCustomer.id, updates);
+      const updatedCust = res?.customer || { ...editingCustomer, ...updates };
+
+      // Update local state immediately
       setCustomers(prev => prev.map(c => {
         if (c.id === editingCustomer.id) {
-          const hasPhone = editPhone.trim().length >= 8 && !editPhone.includes('00000');
+          const hasPhone = updates.phone.length >= 8 && !updates.phone.includes('00000');
           return {
             ...c,
-            phone: editPhone,
+            ...updatedCust,
+            name: updates.name || c.name,
+            email: updates.email || c.email,
+            phone: updates.phone,
+            address: updates.address,
             phoneRegistered: hasPhone,
             loyaltyPoints: Number(editPoints)
           };
@@ -321,6 +341,37 @@ export default function StaffCustomers() {
         </div>
 
       </div>
+
+      {/* Twilio Free Trial Notice Banner */}
+      {voiceStatus?.verification?.isTrial && (
+        <div className="bg-amber-500/10 border border-amber-500/30 rounded-2xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
+          <div className="flex items-start gap-2.5">
+            <AlertTriangle className="w-4 h-4 text-amber-500 shrink-0 mt-0.5" />
+            <div>
+              <span className="font-bold text-amber-900 dark:text-amber-200">
+                Twilio Free Trial Active: Phone calls and SMS can ONLY connect to verified phone numbers.
+              </span>
+              <p className="text-amber-700/90 dark:text-amber-300/80 mt-0.5">
+                On Twilio trial accounts, outbound calls to unverified numbers are blocked by Twilio. To test calls with any customer's mobile number, add it under Verified Caller IDs in your Twilio Console.
+              </p>
+              {voiceStatus.verification.verifiedNumbers?.length > 0 && (
+                <p className="mt-1 font-mono text-[11px] text-amber-800 dark:text-amber-300">
+                  Verified in Twilio: <strong>{voiceStatus.verification.verifiedNumbers.join(', ')}</strong>
+                </p>
+              )}
+            </div>
+          </div>
+          <a
+            href="https://console.twilio.com/develop/phone-numbers/manage/verified"
+            target="_blank"
+            rel="noreferrer"
+            className="px-3 py-1.5 bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold rounded-xl text-xs flex items-center gap-1.5 shrink-0 transition-colors"
+          >
+            <span>Verify Numbers</span>
+            <ExternalLink className="w-3.5 h-3.5" />
+          </a>
+        </div>
+      )}
 
       {/* Filter and Search Bar */}
       <div className="bg-white dark:bg-slate-900 p-4 rounded-3xl border border-gray-200 dark:border-slate-800 shadow-xs flex flex-col md:flex-row items-center justify-between gap-4">
@@ -689,7 +740,36 @@ export default function StaffCustomers() {
               </div>
             </div>
 
-            <form onSubmit={handleSaveCustomerEdit} className="p-6 space-y-4">
+            <form onSubmit={handleSaveCustomerEdit} className="p-6 space-y-3.5">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-black text-gray-700 dark:text-gray-300 mb-1">
+                    Customer Full Name
+                  </label>
+                  <Input
+                    type="text"
+                    placeholder="e.g. Priya Sharma"
+                    value={editName}
+                    onChange={(e) => setEditName(e.target.value)}
+                    required
+                    className="h-9 text-xs font-bold rounded-xl"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-black text-gray-700 dark:text-gray-300 mb-1">
+                    Email Address
+                  </label>
+                  <Input
+                    type="email"
+                    placeholder="customer@domain.com"
+                    value={editEmail}
+                    onChange={(e) => setEditEmail(e.target.value)}
+                    required
+                    className="h-9 text-xs font-mono font-bold rounded-xl"
+                  />
+                </div>
+              </div>
+
               <div>
                 <label className="block text-xs font-black text-gray-700 dark:text-gray-300 mb-1">
                   Mobile Phone Number
@@ -699,11 +779,24 @@ export default function StaffCustomers() {
                   placeholder="+91 98451 23456"
                   value={editPhone}
                   onChange={(e) => setEditPhone(e.target.value)}
-                  className="h-10 text-xs font-mono font-bold rounded-xl"
+                  className="h-9 text-xs font-mono font-bold rounded-xl"
                 />
                 <p className="text-[11px] text-gray-400 mt-1">
                   Enables automated Voicemail deals and delivery tracking SMS.
                 </p>
+              </div>
+
+              <div>
+                <label className="block text-xs font-black text-gray-700 dark:text-gray-300 mb-1">
+                  Primary Delivery Address
+                </label>
+                <Input
+                  type="text"
+                  placeholder="e.g. Flat 402, Green Meadows Apt, Koramangala, Bengaluru"
+                  value={editAddress}
+                  onChange={(e) => setEditAddress(e.target.value)}
+                  className="h-9 text-xs rounded-xl"
+                />
               </div>
 
               <div>
@@ -716,7 +809,7 @@ export default function StaffCustomers() {
                   onChange={(e) => setEditPoints(e.target.value)}
                   min="0"
                   max="10000"
-                  className="h-10 text-xs font-mono font-bold rounded-xl"
+                  className="h-9 text-xs font-mono font-bold rounded-xl"
                 />
               </div>
 

@@ -4,6 +4,7 @@ const mongoose = require('mongoose');
 const Order = require('../models/Order');
 const Product = require('../models/Product');
 const DeliveryPartner = require('../models/DeliveryPartner');
+const User = require('../models/User');
 
 // 1. CREATE NEW ORDER (Checkout / Payment Completion)
 router.post('/', async (req, res) => {
@@ -19,13 +20,25 @@ router.post('/', async (req, res) => {
       tax = 0,
       grandTotal = 0,
       selfCheckoutDetails,
-      customerName = 'Ananya Iyer',
+      customerName = 'Customer',
       customerId = 'cust_1',
-      customerPhone = '+91 98765 00000',
+      customerPhone = '',
       deliveryAddress = '',
       deliverySpeed = 'EXPRESS',
       bypassStoreHours = false
     } = req.body;
+
+    let finalPhone = customerPhone;
+    let finalName = customerName;
+
+    if (customerId && (!finalPhone || finalPhone.includes('00000'))) {
+      try {
+        const u = await User.findOne({ $or: [{ id: customerId }, { email: customerId }] });
+        if (u && u.phone) finalPhone = u.phone;
+        if (u && u.name) finalName = u.name;
+      } catch (e) {}
+    }
+    if (!finalPhone) finalPhone = '+91 98765 00000';
 
     // Verify operating hours (default: 07:00 to 23:00)
     const enforceHours = process.env.ENFORCE_STORE_HOURS !== 'false';
@@ -94,8 +107,8 @@ router.post('/', async (req, res) => {
       type,
       status: initialStatus,
       customerId,
-      customerName,
-      customerPhone,
+      customerName: finalName,
+      customerPhone: finalPhone,
       deliveryAddress,
       deliverySpeed,
       paymentMode,

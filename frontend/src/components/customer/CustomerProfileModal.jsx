@@ -4,9 +4,10 @@ import { useSupermarket, DEMO_CUSTOMERS } from '../../context/SupermarketContext
 import { Button } from '../ui/Button';
 import { Input } from '../ui/Input';
 import { useNavigate } from 'react-router-dom';
+import { apiUpdateCustomerProfile } from '../../services/api';
 
 export default function CustomerProfileModal({ isOpen, onClose }) {
-  const { currentUser, switchCustomerProfile, logoutCustomer } = useSupermarket();
+  const { currentUser, loginCustomer, switchCustomerProfile, logoutCustomer } = useSupermarket();
   const navigate = useNavigate();
   
   const [activeTab, setActiveTab] = useState('profile'); // profile | addresses | switch
@@ -16,22 +17,46 @@ export default function CustomerProfileModal({ isOpen, onClose }) {
 
   if (!isOpen || !currentUser) return null;
 
-  const handleAddAddress = (e) => {
+  const handleAddAddress = async (e) => {
     e.preventDefault();
     if (!newAddressLabel || !newAddressText) return;
     
-    // update current user in local state
     const newAddr = {
       id: 'addr_' + Date.now(),
-      label: newAddressLabel,
-      address: newAddressText,
-      isDefault: false
+      label: newAddressLabel.trim(),
+      address: newAddressText.trim(),
+      isDefault: (currentUser.savedAddresses || []).length === 0
     };
 
-    currentUser.savedAddresses = [...(currentUser.savedAddresses || []), newAddr];
+    const updatedList = [...(currentUser.savedAddresses || []), newAddr];
+    const updatedUser = {
+      ...currentUser,
+      savedAddresses: updatedList,
+      address: currentUser.address || newAddr.address
+    };
+
+    if (loginCustomer) {
+      loginCustomer(updatedUser);
+    } else {
+      currentUser.savedAddresses = updatedList;
+    }
+
     setNewAddressLabel('');
     setNewAddressText('');
     setShowAddAddress(false);
+
+    try {
+      await apiUpdateCustomerProfile({
+        id: currentUser.id,
+        userId: currentUser.id,
+        email: currentUser.email,
+        phone: currentUser.phone,
+        savedAddresses: updatedList,
+        address: updatedUser.address
+      });
+    } catch (err) {
+      console.warn('Backend sync note for address:', err.message);
+    }
   };
 
   const handleLogout = () => {
@@ -127,20 +152,18 @@ export default function CustomerProfileModal({ isOpen, onClose }) {
                     )}
                   </div>
                   <div className="flex items-center justify-between mt-1">
-                    <div className={`font-medium ${currentUser.phone && !currentUser.phone.includes('00000') ? 'text-gray-800 dark:text-gray-200' : 'text-amber-600 dark:text-amber-400 font-bold'}`}>
+                    <div className={`font-medium ${currentUser.phone && !currentUser.phone.includes('00000') ? 'text-gray-800 dark:text-gray-200 font-mono font-bold' : 'text-amber-600 dark:text-amber-400 font-bold'}`}>
                       {currentUser.phone && !currentUser.phone.includes('00000') ? currentUser.phone : 'Not registered yet'}
                     </div>
-                    {(!currentUser.phone || currentUser.phone.trim() === '' || currentUser.phone.includes('00000')) && (
-                      <button
-                        onClick={() => {
-                          onClose();
-                          navigate('/customer/settings');
-                        }}
-                        className="text-xs font-black text-primary-600 hover:text-primary-700 dark:text-primary-400 hover:underline"
-                      >
-                        Link Number →
-                      </button>
-                    )}
+                    <button
+                      onClick={() => {
+                        onClose();
+                        navigate('/customer/settings');
+                      }}
+                      className="text-xs font-black text-primary-600 hover:text-primary-700 dark:text-primary-400 hover:underline flex items-center gap-1"
+                    >
+                      {currentUser.phone && !currentUser.phone.includes('00000') ? 'Manage & Test Call →' : 'Link Number →'}
+                    </button>
                   </div>
                 </div>
                 <div>

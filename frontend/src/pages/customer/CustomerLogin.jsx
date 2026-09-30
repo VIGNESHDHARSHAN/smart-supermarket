@@ -24,7 +24,7 @@ import { useSupermarket, DEMO_CUSTOMERS } from '../../context/SupermarketContext
 import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
 import { triggerGoogleAuth, initGoogleIdentityDirect, getGoogleClientId, saveGoogleClientId, redirectToGoogleOAuth, parseGoogleOAuthHash } from '../../lib/payment';
-import { apiGoogleLogin } from '../../services/api';
+import { apiGoogleLogin, apiRegisterCustomer, apiLoginCustomer } from '../../services/api';
 
 export default function CustomerLogin() {
   const navigate = useNavigate();
@@ -117,7 +117,7 @@ export default function CustomerLogin() {
   }, [navigate, redirectPath, loginCustomer]);
 
   // Handle Login Submission
-  const handleCustomLogin = (e) => {
+  const handleCustomLogin = async (e) => {
     e.preventDefault();
     setErrorMessage('');
     setSuccessMessage('');
@@ -129,60 +129,86 @@ export default function CustomerLogin() {
 
     setLoading(true);
 
-    // Simulated network delay
-    setTimeout(() => {
-      // Find matching mock customer
-      const user = DEMO_CUSTOMERS.find(
-        (c) => c.email.toLowerCase() === identifier.toLowerCase() || c.phone === identifier
-      ) || {
-        id: 'cust_' + Date.now(),
-        name: identifier.includes('@') ? identifier.split('@')[0] : 'SmartMart Shopper',
-        email: identifier.includes('@') ? identifier : `${identifier}@smartmart.local`,
-        phone: !identifier.includes('@') ? identifier : '+91 98450 00000',
-        avatar: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=100&h=100&fit=crop&crop=face',
-        address: 'HSR Layout, Bengaluru - 560102',
-        loyaltyPoints: 120,
-        savedAddresses: [
-          { id: 'addr_1', label: 'Home', address: 'Plot 42, HSR Layout, Sector 1, Bengaluru - 560102', isDefault: true }
-        ]
-      };
+    try {
+      let loggedUser = null;
+      try {
+        const resp = await apiLoginCustomer({ identifier: identifier.trim(), password });
+        loggedUser = resp?.user;
+      } catch (err) {
+        console.warn('Backend login fallback to local cache:', err.message);
+      }
 
-      loginCustomer(user);
+      if (!loggedUser) {
+        // Fallback to demo customers if offline
+        loggedUser = DEMO_CUSTOMERS.find(
+          (c) => c.email.toLowerCase() === identifier.toLowerCase().trim() || c.phone === identifier.trim()
+        ) || {
+          id: 'cust_' + Date.now(),
+          name: identifier.includes('@') ? identifier.split('@')[0] : 'SmartMart Shopper',
+          email: identifier.includes('@') ? identifier : `${identifier}@smartmart.local`,
+          phone: !identifier.includes('@') ? identifier : '+91 98450 00000',
+          avatar: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=100&h=100&fit=crop&crop=face',
+          address: 'HSR Layout, Bengaluru - 560102',
+          loyaltyPoints: 120,
+          savedAddresses: [
+            { id: 'addr_1', label: 'Home', address: 'Plot 42, HSR Layout, Sector 1, Bengaluru - 560102', isDefault: true }
+          ]
+        };
+      }
+
+      loginCustomer(loggedUser);
       setLoading(false);
       navigateAfterAuth(redirectPath);
-    }, 600);
+    } catch (err) {
+      setLoading(false);
+      setErrorMessage(err.message || 'Login failed. Please check your credentials.');
+    }
   };
 
   // Handle Signup Submission
-  const handleSignup = (e) => {
+  const handleSignup = async (e) => {
     e.preventDefault();
     setErrorMessage('');
     setSuccessMessage('');
 
     const name = fullName;
-    const password = signupPassword;
+    const pwd = signupPassword;
 
-    if (!name || !phone || !email || !password) {
+    if (!name || !phone || !email || !pwd) {
       setErrorMessage('Please fill in all mandatory fields.');
       return;
     }
 
-    if (password.length < 6) {
+    if (pwd.length < 6) {
       setErrorMessage('Password must be at least 6 characters.');
       return;
     }
 
     setLoading(true);
 
-    setTimeout(() => {
+    try {
+      let backendUser = null;
+      try {
+        const resp = await apiRegisterCustomer({
+          name: name.trim(),
+          email: email.trim(),
+          phone: phone.trim(),
+          password: pwd,
+          address: address || 'Store Customer - Local Area'
+        });
+        backendUser = resp?.user;
+      } catch (err) {
+        console.warn('Backend register sync note:', err.message);
+      }
+
       const newUser = {
-        id: 'cust_' + Date.now(),
-        name,
-        email,
-        phone,
-        avatar: `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(name)}`,
+        id: backendUser?.id || ('cust_' + Date.now()),
+        name: backendUser?.name || name,
+        email: backendUser?.email || email,
+        phone: backendUser?.phone || phone,
+        avatar: backendUser?.avatar || `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(name)}`,
         address: address || 'Store Customer - Local Area',
-        loyaltyPoints: 150, // Welcome signup bonus
+        loyaltyPoints: backendUser?.loyaltyPoints || 150, // Welcome signup bonus
         savedAddresses: address ? [
           { id: 'addr_' + Date.now(), label: 'Default Delivery', address, isDefault: true }
         ] : []
@@ -195,7 +221,10 @@ export default function CustomerLogin() {
       setTimeout(() => {
         navigateAfterAuth(redirectPath);
       }, 700);
-    }, 600);
+    } catch (err) {
+      setLoading(false);
+      setErrorMessage(err.message || 'Failed to register account');
+    }
   };
 
   // Handle Direct Google SSO Navigation to accounts.google.com
@@ -221,7 +250,17 @@ export default function CustomerLogin() {
     redirectToGoogleOAuth(false);
   };
 
-  const handleQuickLogin = (demoCustomer) => {
+  const handleQuickLogin = async (demoCustomer) => {
+    try {
+      const resp = await apiLoginCustomer({ identifier: demoCustomer.email || demoCustomer.id });
+      if (resp?.user) {
+        loginCustomer(resp.user);
+        navigateAfterAuth(redirectPath);
+        return;
+      }
+    } catch (e) {
+      console.warn('Backend quick login fallback:', e.message);
+    }
     loginCustomer(demoCustomer);
     navigateAfterAuth(redirectPath);
   };
