@@ -26,7 +26,11 @@ import {
   Check,
   UserCheck,
   LayoutGrid,
-  Table as TableIcon
+  Table as TableIcon,
+  ChevronLeft,
+  ChevronRight,
+  ChevronsLeft,
+  ChevronsRight
 } from 'lucide-react';
 import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
@@ -57,6 +61,10 @@ export default function StaffCustomers() {
   const [searchTerm, setSearchTerm] = useState('');
   const [activeFilter, setActiveFilter] = useState('ALL'); // 'ALL' | 'PHONE_ONLY' | 'MISSING_PHONE' | 'VIP'
   const [sortBy, setSortBy] = useState('LATEST'); // 'LATEST' | 'POINTS' | 'SPEND' | 'NAME'
+
+  // Pagination
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
 
   // Modals
   const [selectedCustomerForOutreach, setSelectedCustomerForOutreach] = useState(null);
@@ -126,6 +134,24 @@ export default function StaffCustomers() {
       return new Date(b.createdAt || 0) - new Date(a.createdAt || 0);
     });
   }, [customers, searchTerm, activeFilter, sortBy]);
+
+  // Reset page when search or filters change
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchTerm, activeFilter, sortBy]);
+
+  // Pagination calculation
+  const totalPages = Math.max(1, Math.ceil(filteredCustomers.length / pageSize));
+  const safeCurrentPage = Math.min(Math.max(1, currentPage), totalPages);
+  const startIndex = (safeCurrentPage - 1) * pageSize;
+  const paginatedCustomers = filteredCustomers.slice(startIndex, startIndex + pageSize);
+
+  const getPageNumbers = (current, total) => {
+    if (total <= 7) return Array.from({ length: total }, (_, i) => i + 1);
+    if (current <= 4) return [1, 2, 3, 4, 5, '...', total];
+    if (current >= total - 3) return [1, '...', total - 4, total - 3, total - 2, total - 1, total];
+    return [1, '...', current - 1, current, current + 1, '...', total];
+  };
 
   // Open Edit Modal
   const handleOpenEdit = (customer) => {
@@ -481,7 +507,7 @@ export default function StaffCustomers() {
                     </td>
                   </tr>
                 ) : (
-                  filteredCustomers.map((cust) => (
+                  paginatedCustomers.map((cust) => (
                     <tr 
                       key={cust.id}
                       className="hover:bg-gray-50/80 dark:hover:bg-slate-800/50 transition-colors"
@@ -621,7 +647,7 @@ export default function StaffCustomers() {
       ) : (
         /* Grid Cards View */
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-          {filteredCustomers.map((cust) => (
+          {paginatedCustomers.map((cust) => (
             <div
               key={cust.id}
               className="bg-white dark:bg-slate-900 rounded-3xl p-5 border border-gray-200 dark:border-slate-800 shadow-xs hover:shadow-lg transition-all flex flex-col justify-between space-y-4"
@@ -710,6 +736,100 @@ export default function StaffCustomers() {
 
             </div>
           ))}
+        </div>
+      )}
+
+      {/* Pagination Toolbar */}
+      {filteredCustomers.length > 0 && (
+        <div className="bg-white dark:bg-slate-900 p-4 rounded-3xl border border-gray-200 dark:border-slate-800 shadow-xs flex flex-col sm:flex-row items-center justify-between gap-3 text-xs">
+          <div className="flex items-center gap-2 text-[12px] text-gray-500 dark:text-gray-400 flex-wrap">
+            <span>
+              Showing <strong className="text-gray-900 dark:text-white">{startIndex + 1}–{Math.min(startIndex + pageSize, filteredCustomers.length)}</strong> of <strong className="text-gray-900 dark:text-white">{filteredCustomers.length}</strong> customers
+            </span>
+            <span className="text-gray-300 dark:text-gray-600">|</span>
+            <div className="flex items-center gap-1.5">
+              <span>Rows per page:</span>
+              <select
+                value={pageSize}
+                onChange={(e) => {
+                  setPageSize(Number(e.target.value));
+                  setCurrentPage(1);
+                }}
+                className="bg-gray-50 dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-xl px-2 py-1 text-xs font-bold outline-hidden cursor-pointer"
+              >
+                <option value={5}>5</option>
+                <option value={10}>10</option>
+                <option value={20}>20</option>
+                <option value={50}>50</option>
+                <option value={9999}>All</option>
+              </select>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-1">
+            <button
+              type="button"
+              disabled={safeCurrentPage === 1}
+              onClick={() => setCurrentPage(1)}
+              className="p-1.5 rounded-xl border border-gray-200 dark:border-slate-700 disabled:opacity-30 hover:bg-gray-100 dark:hover:bg-slate-800 cursor-pointer transition-all"
+              title="First Page"
+            >
+              <ChevronsLeft className="w-4 h-4" />
+            </button>
+
+            <button
+              type="button"
+              disabled={safeCurrentPage === 1}
+              onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+              className="px-2.5 py-1 rounded-xl border border-gray-200 dark:border-slate-700 disabled:opacity-30 hover:bg-gray-100 dark:hover:bg-slate-800 cursor-pointer flex items-center gap-1 text-xs font-bold transition-all"
+              title="Previous Page"
+            >
+              <ChevronLeft className="w-3.5 h-3.5" />
+              <span>Prev</span>
+            </button>
+
+            <div className="flex items-center gap-1 mx-1">
+              {getPageNumbers(safeCurrentPage, totalPages).map((p, idx) => (
+                p === '...' ? (
+                  <span key={`ellipsis-${idx}`} className="px-1 text-gray-400 text-xs">...</span>
+                ) : (
+                  <button
+                    key={`page-${p}`}
+                    type="button"
+                    onClick={() => setCurrentPage(p)}
+                    className={`w-7 h-7 rounded-xl text-xs font-bold transition-all flex items-center justify-center cursor-pointer ${
+                      safeCurrentPage === p 
+                        ? 'bg-primary-600 text-white font-black shadow-xs' 
+                        : 'border border-gray-200 dark:border-slate-700 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-slate-800'
+                    }`}
+                  >
+                    {p}
+                  </button>
+                )
+              ))}
+            </div>
+
+            <button
+              type="button"
+              disabled={safeCurrentPage >= totalPages}
+              onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+              className="px-2.5 py-1 rounded-xl border border-gray-200 dark:border-slate-700 disabled:opacity-30 hover:bg-gray-100 dark:hover:bg-slate-800 cursor-pointer flex items-center gap-1 text-xs font-bold transition-all"
+              title="Next Page"
+            >
+              <span>Next</span>
+              <ChevronRight className="w-3.5 h-3.5" />
+            </button>
+
+            <button
+              type="button"
+              disabled={safeCurrentPage >= totalPages}
+              onClick={() => setCurrentPage(totalPages)}
+              className="p-1.5 rounded-xl border border-gray-200 dark:border-slate-700 disabled:opacity-30 hover:bg-gray-100 dark:hover:bg-slate-800 cursor-pointer transition-all"
+              title="Last Page"
+            >
+              <ChevronsRight className="w-4 h-4" />
+            </button>
+          </div>
         </div>
       )}
 

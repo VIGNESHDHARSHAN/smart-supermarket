@@ -501,8 +501,12 @@ export const apiSendOfferAlert = async ({
   promoCode,
   discountPercent,
   description = '',
-  channels = ['SMS', 'VOICEMAIL']
+  channels = ['SMS', 'VOICEMAIL'],
+  customMessage = '',
+  voicemailMessage = '',
+  messageText = ''
 }) => {
+  const customText = customMessage || voicemailMessage || messageText;
   const res = await customFetch(`${API_BASE_URL}/voice/send-offer-alert`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -513,12 +517,67 @@ export const apiSendOfferAlert = async ({
       promoCode,
       discountPercent,
       description,
-      channels
+      channels,
+      customMessage: customText,
+      voicemailMessage: customText,
+      messageText: customText
     })
   });
   const data = await res.json().catch(() => ({}));
   if (!res.ok || data.success === false) {
     throw new Error(data.error || data.message || 'Failed to dispatch offer notification');
+  }
+  return data;
+};
+
+/**
+ * Test customized speech directly via phone call
+ */
+export const apiTestCustomSpeech = async ({
+  to = '+919514134125',
+  text,
+  customerName = 'Vignesh'
+}) => {
+  const res = await customFetch(`${API_BASE_URL}/voice/test-custom-speech`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ to, text, customerName })
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok || data.success === false) {
+    throw new Error(data.error || data.message || 'Failed to dispatch test call');
+  }
+  return data;
+};
+
+/**
+ * Send WhatsApp notification / 1-click blast
+ */
+export const apiSendWhatsApp = async ({
+  to,
+  customerName = 'Valued Customer',
+  messageText = '',
+  customMessage = '',
+  offerTitle = '',
+  promoCode = '',
+  discountPercent = 20
+}) => {
+  const res = await customFetch(`${API_BASE_URL}/voice/send-whatsapp`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      to,
+      customerName,
+      messageText,
+      customMessage: customMessage || messageText,
+      offerTitle,
+      promoCode,
+      discountPercent
+    })
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok || data.success === false) {
+    throw new Error(data.error || data.message || 'Failed to dispatch WhatsApp message');
   }
   return data;
 };
@@ -637,7 +696,9 @@ export const apiBroadcastToAllCustomers = async ({
   discountPercent,
   description,
   channels = ['SMS', 'VOICEMAIL'],
-  targetRecipients = []
+  targetRecipients = [],
+  customMessage = '',
+  voicemailMessage = ''
 }) => {
   try {
     const res = await customFetch(`${API_BASE_URL}/voice/broadcast-all`, {
@@ -649,7 +710,9 @@ export const apiBroadcastToAllCustomers = async ({
         discountPercent,
         description,
         channels,
-        targetRecipients
+        targetRecipients,
+        customMessage: customMessage || voicemailMessage,
+        voicemailMessage: voicemailMessage || customMessage
       })
     });
     const data = await res.json().catch(() => ({}));

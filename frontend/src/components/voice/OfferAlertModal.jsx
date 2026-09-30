@@ -11,7 +11,8 @@ import {
   Percent, 
   Sparkles,
   Volume2,
-  Settings
+  Settings,
+  MessageCircle
 } from 'lucide-react';
 import { Button } from '../ui/Button';
 import { apiSendOfferAlert, apiGetVoiceStatus } from '../../services/api';
@@ -27,7 +28,10 @@ export default function OfferAlertModal({
 }) {
   const [phone, setPhone] = useState(defaultPhone);
   const [customerName, setCustomerName] = useState(defaultName);
-  const [sendSMS, setSendSMS] = useState(true);
+  const [customMessage, setCustomMessage] = useState('');
+  const [isCustomEdited, setIsCustomEdited] = useState(false);
+  const [sendWhatsApp, setSendWhatsApp] = useState(true);
+  const [sendSMS, setSendSMS] = useState(false);
   const [sendVoicemail, setSendVoicemail] = useState(true);
   const [isSending, setIsSending] = useState(false);
   const [result, setResult] = useState(null);
@@ -41,14 +45,23 @@ export default function OfferAlertModal({
     });
   };
 
+  const getDefaultSpeech = (off, name) => {
+    if (!off) return '';
+    const cleanName = name || 'Valued Shopper';
+    return `Hello ${cleanName}, this is SmartMart Supermarket with an exciting announcement! ${off.title} is now live with an exclusive ${off.discountPercent} percent discount. Use coupon code ${off.promoCode} at checkout. Order online with fifteen-minute doorstep delivery or visit our express store. Thank you and have a wonderful day!`;
+  };
+
   useEffect(() => {
     if (isOpen) {
       setResult(null);
       if (defaultPhone) setPhone(defaultPhone);
       if (defaultName) setCustomerName(defaultName);
+      if (offer && !isCustomEdited) {
+        setCustomMessage(getDefaultSpeech(offer, defaultName));
+      }
       fetchProviderStatus();
     }
-  }, [isOpen, defaultPhone, defaultName]);
+  }, [isOpen, defaultPhone, defaultName, offer]);
 
   const handlePlayVoicemail = () => {
     if (!('speechSynthesis' in window)) {
@@ -60,8 +73,7 @@ export default function OfferAlertModal({
       setIsPlayingSpeech(false);
       return;
     }
-    const cleanName = customerName || 'Valued Shopper';
-    const text = `Hello ${cleanName}, this is SmartMart Supermarket with an exciting announcement! ${offer.title} is now live with an exclusive ${offer.discountPercent} percent discount. Use coupon code ${offer.promoCode} at checkout. Order online with fifteen-minute doorstep delivery or visit our express store. Thank you and have a wonderful day!`;
+    const text = customMessage || getDefaultSpeech(offer, customerName);
     const utterance = new SpeechSynthesisUtterance(text);
     utterance.rate = 0.95;
     utterance.pitch = 1.05;
@@ -76,6 +88,30 @@ export default function OfferAlertModal({
 
   if (!isOpen || !offer) return null;
 
+  const handleOpenWhatsApp = () => {
+    if (!phone || phone.trim().length < 8) {
+      alert('Please enter a valid phone number.');
+      return;
+    }
+    const cleanDigits = phone.replace(/\D/g, '');
+    const intlPhone = cleanDigits.startsWith('91') ? cleanDigits : (cleanDigits.length === 10 ? `91${cleanDigits}` : cleanDigits);
+    const activeMessage = (customMessage || getDefaultSpeech(offer, customerName)).trim();
+    const url = `https://wa.me/${intlPhone}?text=${encodeURIComponent(activeMessage)}`;
+    window.open(url, '_blank', 'noopener,noreferrer');
+  };
+
+  const handleOpenSMS = () => {
+    if (!phone || phone.trim().length < 8) {
+      alert('Please enter a valid phone number.');
+      return;
+    }
+    const cleanDigits = phone.replace(/\D/g, '');
+    const intlPhone = cleanDigits.startsWith('91') ? cleanDigits : (cleanDigits.length === 10 ? `91${cleanDigits}` : cleanDigits);
+    const activeMessage = (customMessage || getDefaultSpeech(offer, customerName)).trim();
+    const url = `sms:+${intlPhone}?body=${encodeURIComponent(activeMessage)}`;
+    window.open(url, '_blank', 'noopener,noreferrer');
+  };
+
   const handleDispatch = async () => {
     if (!phone || phone.trim().length < 8) {
       alert('Please enter a valid phone number.');
@@ -83,13 +119,16 @@ export default function OfferAlertModal({
     }
 
     const channels = [];
-    if (sendSMS) channels.push('SMS');
+    if (sendWhatsApp) channels.push('WHATSAPP');
     if (sendVoicemail) channels.push('VOICEMAIL');
+    if (sendSMS) channels.push('SMS');
 
     if (channels.length === 0) {
-      alert('Please select at least one channel (SMS or Voicemail).');
+      alert('Please select at least one channel (WhatsApp, Voice, or SMS).');
       return;
     }
+
+    const activeMessage = (customMessage || getDefaultSpeech(offer, customerName)).trim();
 
     setIsSending(true);
     setResult(null);
@@ -102,7 +141,10 @@ export default function OfferAlertModal({
         promoCode: offer.promoCode,
         discountPercent: offer.discountPercent,
         description: offer.description,
-        channels
+        channels,
+        customMessage: activeMessage,
+        voicemailMessage: activeMessage,
+        messageText: activeMessage
       });
 
       setResult(resp);
@@ -257,40 +299,120 @@ export default function OfferAlertModal({
             />
           </div>
 
+          <div>
+            <div className="flex items-center justify-between mb-1">
+              <label className="text-xs font-bold text-gray-700 dark:text-gray-300">
+                📢 Customize Broadcast Message (Voice Call, WhatsApp &amp; SMS)
+              </label>
+              {isCustomEdited && (
+                <span className="text-[10px] text-amber-600 font-bold bg-amber-50 dark:bg-amber-950/40 px-2 py-0.5 rounded-full">
+                  Customized
+                </span>
+              )}
+            </div>
+
+            {/* Quick 1-Click Message Templates */}
+            <div className="flex items-center gap-1.5 flex-wrap pb-1.5">
+              <span className="text-[10px] font-bold text-gray-500 dark:text-gray-400">Quick Templates:</span>
+              <button
+                type="button"
+                onClick={() => {
+                  setCustomMessage(`Hello ${customerName || 'Valued Shopper'}, this is SmartMart Supermarket! Enjoy flat ${offer.discountPercent}% OFF with code ${offer.promoCode} at checkout.`);
+                  setIsCustomEdited(true);
+                }}
+                className="text-[10px] font-semibold px-2 py-0.5 rounded-md bg-white dark:bg-slate-800 border border-amber-300 dark:border-amber-800/60 hover:bg-amber-50 text-amber-800 dark:text-amber-300 cursor-pointer shadow-2xs"
+              >
+                🏷️ {offer.discountPercent}% OFF Deal
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setCustomMessage(`Hello ${customerName || 'Valued Shopper'}, SmartMart fifteen-minute express doorstep delivery is live! Order online now and get free delivery with code ${offer.promoCode}.`);
+                  setIsCustomEdited(true);
+                }}
+                className="text-[10px] font-semibold px-2 py-0.5 rounded-md bg-white dark:bg-slate-800 border border-emerald-300 dark:border-emerald-800/60 hover:bg-emerald-50 text-emerald-800 dark:text-emerald-300 cursor-pointer shadow-2xs"
+              >
+                🚚 15-Min Free Delivery
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setCustomMessage('');
+                  setIsCustomEdited(true);
+                }}
+                className="text-[10px] font-semibold px-2 py-0.5 rounded-md bg-white dark:bg-slate-800 border border-gray-300 dark:border-slate-700 hover:bg-rose-50 hover:text-rose-600 text-gray-500 cursor-pointer shadow-2xs"
+                title="Clear text to write completely from scratch"
+              >
+                🧹 Clear Blank
+              </button>
+            </div>
+
+            <textarea
+              rows={3}
+              value={customMessage}
+              onChange={(e) => {
+                setCustomMessage(e.target.value);
+                setIsCustomEdited(true);
+              }}
+              placeholder="Type your custom announcement text here (speaks in voice call, sends in WhatsApp and SMS)..."
+              className="w-full text-xs p-3 rounded-xl border border-amber-300 dark:border-slate-700 bg-white dark:bg-slate-800 focus:border-amber-500 focus:ring-2 focus:ring-amber-500/20 outline-hidden font-medium"
+            />
+          </div>
+
           {/* Delivery Channels Checklist */}
           <div>
             <label className="text-xs font-bold text-gray-700 dark:text-gray-300 block mb-1.5">
               Select Alert Channels:
             </label>
-            <div className="grid grid-cols-2 gap-2">
-              <label className={`p-3 rounded-xl border flex items-center gap-2 cursor-pointer transition-all ${
-                sendSMS 
-                  ? 'border-emerald-500 bg-emerald-50/50 dark:bg-emerald-950/40 text-emerald-900 dark:text-emerald-300 font-bold' 
+            <div className="grid grid-cols-3 gap-2">
+              <label className={`p-2.5 rounded-xl border flex flex-col items-center justify-center gap-1 cursor-pointer text-center transition-all ${
+                sendWhatsApp 
+                  ? 'border-emerald-500 bg-emerald-50 dark:bg-emerald-950/40 text-emerald-900 dark:text-emerald-300 font-bold shadow-xs' 
                   : 'border-gray-200 dark:border-slate-700 text-gray-600 dark:text-gray-400'
               }`}>
                 <input
                   type="checkbox"
-                  checked={sendSMS}
-                  onChange={(e) => setSendSMS(e.target.checked)}
-                  className="rounded text-emerald-600 focus:ring-emerald-500"
+                  checked={sendWhatsApp}
+                  onChange={(e) => setSendWhatsApp(e.target.checked)}
+                  className="rounded text-emerald-600 focus:ring-emerald-500 sr-only"
                 />
-                <MessageSquare className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
-                <span className="text-xs">SMS Text</span>
+                <MessageCircle className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+                <span className="text-xs font-black">WhatsApp</span>
+                <span className="text-[9px] text-emerald-700 dark:text-emerald-400 font-semibold">Recommended</span>
               </label>
 
-              <label className={`p-3 rounded-xl border flex items-center gap-2 cursor-pointer transition-all ${
+              <label className={`p-2.5 rounded-xl border flex flex-col items-center justify-center gap-1 cursor-pointer text-center transition-all ${
                 sendVoicemail 
-                  ? 'border-indigo-500 bg-indigo-50/50 dark:bg-indigo-950/40 text-indigo-900 dark:text-indigo-300 font-bold' 
+                  ? 'border-indigo-500 bg-indigo-50 dark:bg-indigo-950/40 text-indigo-900 dark:text-indigo-300 font-bold shadow-xs' 
                   : 'border-gray-200 dark:border-slate-700 text-gray-600 dark:text-gray-400'
               }`}>
                 <input
                   type="checkbox"
                   checked={sendVoicemail}
                   onChange={(e) => setSendVoicemail(e.target.checked)}
-                  className="rounded text-indigo-600 focus:ring-indigo-500"
+                  className="rounded text-indigo-600 focus:ring-indigo-500 sr-only"
                 />
                 <PhoneCall className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
-                <span className="text-xs">Voice / Call</span>
+                <span className="text-xs font-black">Voice Call</span>
+                <span className="text-[9px] text-indigo-600 dark:text-indigo-400 font-semibold">Automated</span>
+              </label>
+
+              <label className={`p-2.5 rounded-xl border flex flex-col items-center justify-center gap-1 cursor-pointer text-center transition-all ${
+                sendSMS 
+                  ? 'border-amber-500 bg-amber-50 dark:bg-amber-950/40 text-amber-900 dark:text-amber-300 font-bold shadow-xs' 
+                  : 'border-gray-200 dark:border-slate-700 text-gray-500 dark:text-gray-400'
+              }`}
+              title="SMS to +91 numbers requires TRAI DLT template registration on Twilio"
+              >
+                <input
+                  type="checkbox"
+                  checked={sendSMS}
+                  onChange={(e) => setSendSMS(e.target.checked)}
+                  className="rounded text-amber-600 focus:ring-amber-500 sr-only"
+                />
+                <MessageSquare className="w-4 h-4 text-amber-600 dark:text-amber-400" />
+                <span className="text-xs font-black">SMS Text</span>
+                <span className="text-[9px] text-amber-700 dark:text-amber-400 font-semibold">DLT Trial Limit</span>
               </label>
             </div>
           </div>
@@ -303,11 +425,59 @@ export default function OfferAlertModal({
               ? 'bg-emerald-50 dark:bg-emerald-950/50 border-emerald-200 dark:border-emerald-800 text-emerald-900 dark:text-emerald-200' 
               : 'bg-rose-50 dark:bg-rose-950/50 border-rose-200 dark:border-rose-800 text-rose-900 dark:text-rose-200'
           }`}>
-            <div className="font-extrabold flex items-center gap-1.5">
-              {result.success ? <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" /> : <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />}
-              <span>{result.success ? 'Offer Alert Dispatched!' : 'Dispatch Notice'}</span>
+            <div className="font-extrabold flex items-center justify-between">
+              <div className="flex items-center gap-1.5">
+                {result.success ? <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" /> : <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />}
+                <span>{result.success ? 'Offer Alert Dispatched!' : 'Dispatch Notice'}</span>
+              </div>
+              <div className="flex items-center gap-1.5 shrink-0">
+                {result.waLink && (
+                  <a
+                    href={result.waLink}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="px-2 py-0.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded text-[10px] font-bold inline-flex items-center gap-1 shadow-xs"
+                  >
+                    Open WA 💬
+                  </a>
+                )}
+                {result.smsLink && (
+                  <a
+                    href={result.smsLink}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="px-2 py-0.5 bg-blue-600 hover:bg-blue-700 text-white rounded text-[10px] font-bold inline-flex items-center gap-1 shadow-xs"
+                  >
+                    Open SMS 📱
+                  </a>
+                )}
+              </div>
             </div>
             <p className="text-[11px] opacity-95 leading-relaxed">{result.message || result.error}</p>
+            <div className="grid grid-cols-2 gap-2 pt-1.5">
+              {result.waLink && (
+                <a
+                  href={result.waLink}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center justify-center gap-1.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl text-xs shadow-xs text-center"
+                >
+                  <MessageCircle className="w-3.5 h-3.5" />
+                  <span>Send via WhatsApp 💬</span>
+                </a>
+              )}
+              {result.smsLink && (
+                <a
+                  href={result.smsLink}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center justify-center gap-1.5 py-1.5 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl text-xs shadow-xs text-center"
+                >
+                  <MessageSquare className="w-3.5 h-3.5" />
+                  <span>Send via SMS App 📱</span>
+                </a>
+              )}
+            </div>
             {String(result.error || result.message).includes('Verified') && (
               <div className="pt-1.5 text-[10px] border-t border-rose-200 dark:border-rose-800/60 text-indigo-700 dark:text-indigo-300">
                 👉 Add this number to your <a href="https://console.twilio.com/develop/phone-numbers/manage/verified" target="_blank" rel="noreferrer" className="underline font-black">Twilio Console Verified Caller IDs</a> to receive live test calls on a Free Trial account.
@@ -316,12 +486,26 @@ export default function OfferAlertModal({
           </div>
         )}
 
+        {/* Twilio Free Trial Keypad Instructions */}
+        <div className="p-3 bg-indigo-50/80 dark:bg-indigo-950/40 rounded-2xl border border-indigo-200 dark:border-indigo-800/60 text-xs text-indigo-950 dark:text-indigo-200 space-y-1">
+          <div className="font-bold flex items-center gap-1.5 text-indigo-800 dark:text-indigo-300">
+            <PhoneCall className="w-3.5 h-3.5 animate-pulse" />
+            <span>How to hear the Offer Audio on your phone:</span>
+          </div>
+          <p className="text-[11px] leading-relaxed text-indigo-900/90 dark:text-indigo-200/90">
+            When you pick up the incoming call from Twilio, the automated voice says: <em>&ldquo;You have a trial account... <strong>Press any key to execute your code</strong>&rdquo;</em>.
+          </p>
+          <p className="text-[11px] font-semibold text-emerald-700 dark:text-emerald-400">
+            👉 <strong>Press any number (e.g. 1) on your phone keypad</strong> and the supermarket offer announcement will play aloud!
+          </p>
+        </div>
+
         {/* Action Buttons */}
-        <div className="flex items-center gap-3 pt-2">
+        <div className="flex items-center gap-2 pt-2">
           <Button
             type="button"
             variant="outline"
-            className="flex-1 h-11 text-xs font-bold"
+            className="h-11 px-3 text-xs font-bold shrink-0"
             onClick={onClose}
           >
             Cancel
@@ -329,12 +513,32 @@ export default function OfferAlertModal({
 
           <Button
             type="button"
-            className="flex-2 h-11 bg-amber-500 hover:bg-amber-600 text-slate-950 font-black text-xs shadow-md flex items-center justify-center gap-2"
+            className="flex-1 h-11 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-md flex items-center justify-center gap-1.5"
+            onClick={handleOpenWhatsApp}
+            title="Open customized offer message pre-filled in WhatsApp"
+          >
+            <MessageCircle className="w-4 h-4 shrink-0" />
+            <span>Open WhatsApp 💬</span>
+          </Button>
+
+          <Button
+            type="button"
+            className="flex-1 h-11 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs shadow-md flex items-center justify-center gap-1.5"
+            onClick={handleOpenSMS}
+            title="Open customized offer message pre-filled in native SMS app"
+          >
+            <MessageSquare className="w-4 h-4 shrink-0" />
+            <span>Open SMS App 📱</span>
+          </Button>
+
+          <Button
+            type="button"
+            className="flex-1 h-11 bg-amber-500 hover:bg-amber-600 text-slate-950 font-black text-xs shadow-md flex items-center justify-center gap-1.5"
             onClick={handleDispatch}
             disabled={isSending}
           >
-            <Send className="w-4 h-4" />
-            {isSending ? 'Sending Alerts...' : 'Broadcast to Phone Now'}
+            <Send className="w-4 h-4 shrink-0" />
+            <span>{isSending ? 'Sending...' : 'Call & Dispatch'}</span>
           </Button>
         </div>
 

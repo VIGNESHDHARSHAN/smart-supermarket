@@ -232,6 +232,20 @@ export default function VoicemailModal({
           </div>
         )}
 
+        {/* Twilio Trial Keypad Tip */}
+        <div className="p-3 bg-indigo-50/80 rounded-2xl border border-indigo-200 text-xs text-indigo-950 space-y-1">
+          <div className="font-bold flex items-center gap-1.5 text-indigo-800">
+            <PhoneCall className="w-3.5 h-3.5 animate-pulse" />
+            <span>How to hear the Voicemail message:</span>
+          </div>
+          <p className="text-[11px] leading-relaxed text-indigo-900/90">
+            When you answer the incoming call, Twilio will ask you to: <em>"Press any key to execute your code"</em>.
+          </p>
+          <p className="text-[11px] font-semibold text-emerald-700">
+            👉 <strong>Press any number (e.g. 1) on your phone keypad</strong> to hear the store voicemail message played aloud!
+          </p>
+        </div>
+
         {/* Action Buttons */}
         <div className="flex items-center gap-3 pt-2">
           <Button
