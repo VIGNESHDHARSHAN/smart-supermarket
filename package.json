@@ -31,5 +31,8 @@
   "license": "ISC",
   "devDependencies": {
     "concurrently": "^10.0.5"
+  },
+  "dependencies": {
+    "puppeteer": "^25.13.0"
   }
 }

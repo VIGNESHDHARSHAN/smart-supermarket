@@ -26,7 +26,8 @@ import {
   Plus,
   PhoneCall,
   MessageSquare,
-  Bell
+  Bell,
+  BarChart3
 } from 'lucide-react';
 import { AvailabilityBadge } from '../../components/ui/Badge';
 import { Button } from '../../components/ui/Button';
@@ -170,12 +171,18 @@ export default function Dashboard() {
         <div>
           <h1 className="text-2xl font-black text-gray-900 flex items-center gap-2">
             <Activity className="w-7 h-7 text-primary-600" />
-            Store Admin & Real-Time Operations Hub
+            Store Admin &amp; Real-Time Operations Hub
           </h1>
           <p className="text-xs text-gray-500">Live store analytics, turnstile gate monitoring, POS billing, and dispatch queue.</p>
         </div>
 
         <div className="flex flex-wrap items-center gap-2.5">
+          <Link
+            to="/staff/analytics"
+            className="flex items-center gap-1.5 px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-black shadow-sm transition-colors border border-emerald-500/40"
+          >
+            <BarChart3 className="w-3.5 h-3.5" /> Manager Bar Graphs
+          </Link>
           <Link
             to="/staff/pos"
             className="flex items-center gap-1.5 px-3 py-1.5 bg-primary-600 hover:bg-primary-700 text-white rounded-xl text-xs font-bold shadow-xs transition-colors"

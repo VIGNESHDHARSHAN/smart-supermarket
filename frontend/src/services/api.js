@@ -5,8 +5,11 @@
  */
 
 const getApiBaseUrl = () => {
-  if (import.meta.env.VITE_API_URL) {
-    return import.meta.env.VITE_API_URL;
+  const envUrl = import.meta.env.VITE_API_URL;
+  if (envUrl && envUrl.trim()) {
+    const trimmed = envUrl.trim().replace(/\/+$/, '');
+    // If the user already provided /api suffix, use it; otherwise append /api
+    return trimmed.endsWith('/api') ? trimmed : `${trimmed}/api`;
   }
   return '/api';
 };
@@ -526,6 +529,78 @@ export const apiSendOfferAlert = async ({
   const data = await res.json().catch(() => ({}));
   if (!res.ok || data.success === false) {
     throw new Error(data.error || data.message || 'Failed to dispatch offer notification');
+  }
+  return data;
+};
+
+/**
+ * Send automated Email notification with rich HTML receipt/announcement
+ */
+export const apiSendEmail = async ({
+  to,
+  customerName = 'Valued Customer',
+  subject = '',
+  orderId = '',
+  orderStatus = '',
+  orderDetails = null,
+  offerTitle = '',
+  promoCode = '',
+  discountPercent = 0,
+  customMessage = ''
+}) => {
+  const res = await customFetch(`${API_BASE_URL}/voice/send-email`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      to,
+      customerName,
+      subject,
+      orderId,
+      orderStatus,
+      orderDetails,
+      offerTitle,
+      promoCode,
+      discountPercent,
+      customMessage
+    })
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok || data.success === false) {
+    throw new Error(data.error || data.message || 'Failed to dispatch email');
+  }
+  return data;
+};
+
+/**
+ * Multi-channel Order Dispatcher: sends SMS, Email, and/or Voicemail simultaneously
+ */
+export const apiSendOrderNotification = async ({
+  orderId,
+  customerName = 'Valued Customer',
+  customerPhone = '',
+  customerEmail = '',
+  orderStatus = 'CONFIRMED',
+  orderDetails = null,
+  channels = ['SMS', 'EMAIL'],
+  customMessage = ''
+}) => {
+  const res = await customFetch(`${API_BASE_URL}/voice/send-order-notification`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      orderId,
+      customerName,
+      customerPhone,
+      customerEmail,
+      orderStatus,
+      orderDetails,
+      channels,
+      customMessage
+    })
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok || data.success === false) {
+    throw new Error(data.error || data.message || 'Failed to send order notification');
   }
   return data;
 };

@@ -31,6 +31,7 @@ import StaffTeamManagement from './pages/staff/StaffTeamManagement';
 import StaffCampaigns from './pages/staff/StaffCampaigns';
 import StaffCustomers from './pages/staff/StaffCustomers';
 import StaffSettings from './pages/staff/StaffSettings';
+import ManagerAnalytics from './pages/staff/ManagerAnalytics';
 
 // Manager Pages
 import ManagerLogin from './pages/manager/ManagerLogin';
@@ -63,6 +64,8 @@ function App() {
 
               {/* Working Staff & Store Manager Login Routes */}
               <Route path="/manager/login" element={<ManagerLogin />} />
+              <Route path="/manager/analytics" element={<Navigate to="/staff/analytics" replace />} />
+              <Route path="/manager/dashboard" element={<Navigate to="/staff/dashboard" replace />} />
               <Route path="/staff/login" element={<StaffLogin />} />
 
               {/* Staff & Manager Protected Routes */}
@@ -70,6 +73,7 @@ function App() {
                 <Route path="/staff" element={<StaffLayout />}>
                   <Route index element={<Navigate to="/staff/dashboard" replace />} />
                   <Route path="dashboard" element={<Dashboard />} />
+                  <Route path="analytics" element={<ManagerAnalytics />} />
                   <Route path="verify" element={<StaffVerification />} />
                   <Route path="orders" element={<StaffOrders />} />
                   <Route path="delivery" element={<StaffDeliveryFleet />} />

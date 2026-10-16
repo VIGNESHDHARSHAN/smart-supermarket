@@ -19,7 +19,8 @@ import {
   Users,
   UserCheck,
   KeyRound,
-  Megaphone
+  Megaphone,
+  BarChart3
 } from 'lucide-react';
 
 import { useState } from 'react';
@@ -55,6 +56,13 @@ export default function StaffLayout() {
 
   const navigation = [
     { name: 'Dashboard', href: '/staff/dashboard', icon: LayoutDashboard },
+    { 
+      name: 'Manager Analytics Hub', 
+      href: '/staff/analytics', 
+      icon: BarChart3,
+      badge: 'Bar Graphs',
+      badgeColor: 'emerald'
+    },
     { 
       name: 'Turnstile Gate & Security', 
       href: '/staff/verify', 

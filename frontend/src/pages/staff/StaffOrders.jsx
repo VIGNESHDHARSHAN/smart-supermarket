@@ -20,10 +20,13 @@ import {
   ShieldCheck,
   Layers,
   Bike,
-  PhoneCall
+  PhoneCall,
+  MessageSquare,
+  Mail
 } from 'lucide-react';
 import { soundEffects } from '../../lib/audio';
 import VoicemailModal from '../../components/voice/VoicemailModal';
+import OrderNotificationModal from '../../components/notifications/OrderNotificationModal';
 
 export default function StaffOrders() {
   const { 
@@ -40,6 +43,7 @@ export default function StaffOrders() {
   const [assigningRiderOrder, setAssigningRiderOrder] = useState(null);
   const [selectedRider, setSelectedRider] = useState(() => deliveryPartners[0] || null);
   const [voicemailOrder, setVoicemailOrder] = useState(null);
+  const [notifyOrder, setNotifyOrder] = useState(null);
 
   const filteredOrders = orders.filter(o => {
     if (filterType === 'ALL') return true;
@@ -173,6 +177,7 @@ export default function StaffOrders() {
                 onOpenPacking={() => handleOpenPacking(order)}
                 onOpenAssignRider={() => handleOpenAssignRider(order)}
                 onOpenVoicemail={() => setVoicemailOrder(order)}
+                onOpenNotify={() => setNotifyOrder(order)}
                 onComplete={() => completeOrderImmediately(order.id)}
                 onCancel={() => cancelOrder(order.id)}
               />
@@ -202,6 +207,7 @@ export default function StaffOrders() {
                 onOpenPacking={() => handleOpenPacking(order)}
                 onOpenAssignRider={() => handleOpenAssignRider(order)}
                 onOpenVoicemail={() => setVoicemailOrder(order)}
+                onOpenNotify={() => setNotifyOrder(order)}
                 onComplete={() => completeOrderImmediately(order.id)}
                 onCancel={() => cancelOrder(order.id)}
               />
@@ -231,6 +237,7 @@ export default function StaffOrders() {
                 onOpenPacking={() => handleOpenPacking(order)}
                 onOpenAssignRider={() => handleOpenAssignRider(order)}
                 onOpenVoicemail={() => setVoicemailOrder(order)}
+                onOpenNotify={() => setNotifyOrder(order)}
                 onComplete={() => completeOrderImmediately(order.id)}
                 onCancel={() => cancelOrder(order.id)}
               />
@@ -257,6 +264,7 @@ export default function StaffOrders() {
                 key={order.id} 
                 order={order} 
                 onOpenVoicemail={() => setVoicemailOrder(order)}
+                onOpenNotify={() => setNotifyOrder(order)}
                 isCompleted={true}
               />
             ))}
@@ -419,6 +427,15 @@ export default function StaffOrders() {
         />
       )}
 
+      {/* Multi-Channel SMS & Email Order Notification Modal */}
+      {notifyOrder && (
+        <OrderNotificationModal
+          order={notifyOrder}
+          isOpen={Boolean(notifyOrder)}
+          onClose={() => setNotifyOrder(null)}
+        />
+      )}
+
     </div>
   );
 }
@@ -429,6 +446,7 @@ function StaffOrderCard({
   onOpenPacking, 
   onOpenAssignRider, 
   onOpenVoicemail,
+  onOpenNotify,
   onComplete, 
   onCancel, 
   isCompleted = false 
@@ -455,15 +473,26 @@ function StaffOrderCard({
           <span className="flex items-center gap-1.5 truncate">
             <User className="w-3.5 h-3.5 text-gray-400" /> {order.customerName}
           </span>
-          {order.customerPhone && onOpenVoicemail && (
-            <button
-              onClick={() => onOpenVoicemail(order)}
-              className="px-2 py-0.5 rounded-lg bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold text-[10px] flex items-center gap-1 transition-colors border border-indigo-200/60"
-              title="Send Automated Voicemail via Twilio Voice API"
-            >
-              <PhoneCall className="w-2.5 h-2.5" /> Voicemail
-            </button>
-          )}
+          <div className="flex items-center gap-1 flex-shrink-0">
+            {onOpenNotify && (
+              <button
+                onClick={() => onOpenNotify(order)}
+                className="px-2 py-0.5 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-700 font-bold text-[10px] flex items-center gap-1 transition-colors border border-emerald-200/80 shadow-2xs"
+                title="Send Instant SMS & HTML Email Notification"
+              >
+                <MessageSquare className="w-2.5 h-2.5 text-emerald-600" /> Notify
+              </button>
+            )}
+            {order.customerPhone && onOpenVoicemail && (
+              <button
+                onClick={() => onOpenVoicemail(order)}
+                className="px-2 py-0.5 rounded-lg bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold text-[10px] flex items-center gap-1 transition-colors border border-indigo-200/60"
+                title="Send Automated Voicemail via Twilio Voice API"
+              >
+                <PhoneCall className="w-2.5 h-2.5" /> Call
+              </button>
+            )}
+          </div>
         </div>
         <div className="text-gray-500 text-[11px] truncate flex items-center gap-1.5">
           <Phone className="w-3 h-3 text-gray-400" /> {order.customerPhone}
