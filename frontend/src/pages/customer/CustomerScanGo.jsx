@@ -36,10 +36,12 @@ import {
   Unlock,
   HelpCircle,
   Upload,
-  Loader2
+  Loader2,
+  Globe
 } from 'lucide-react';
 import { soundEffects } from '../../lib/audio';
 import { isMobileDevice, openRazorpayCheckout } from '../../lib/payment';
+import { PayPalButtonSection } from '../../components/customer/PayPalButtonSection';
 import { useLanguage } from '../../context/LanguageContext';
 import { ProductImage } from '../../components/ui/ProductImage';
 import { fetchProductImageFromInternet } from '../../services/imageService';
@@ -1435,11 +1437,12 @@ export default function CustomerScanGo() {
                 </div>
 
                 {/* Payment Methods */}
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+                <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
                   {[
                     { id: 'RAZORPAY', label: 'Razorpay', icon: Zap, desc: 'UPI, Cards, Netbanking' },
                     { id: 'UPI', label: 'UPI (Razorpay)', icon: Smartphone, desc: 'GPay / PhonePe / Paytm' },
                     { id: 'CARD', label: 'Cards (Razorpay)', icon: CreditCard, desc: 'Visa / RuPay 3DS' },
+                    { id: 'PAYPAL', label: 'PayPal', icon: Globe, desc: 'Global / Cards' },
                     { id: 'WALLET', label: 'Smart Wallet', icon: Smartphone, desc: 'Balance ₹2,450' }
                   ].map(method => (
                     <button
@@ -1448,11 +1451,13 @@ export default function CustomerScanGo() {
                       onClick={() => { setSelectedPayment(method.id); setPaymentNotice(null); }}
                       className={`p-3 rounded-2xl border text-center transition-all flex flex-col items-center justify-center gap-1.5 ${
                         selectedPayment === method.id 
-                          ? 'border-emerald-600 bg-emerald-50/70 dark:bg-emerald-950/60 text-emerald-900 dark:text-emerald-300 shadow-sm ring-2 ring-emerald-500/20' 
+                          ? method.id === 'PAYPAL'
+                            ? 'border-[#0070ba] bg-blue-50/80 dark:bg-blue-950/60 text-[#003087] dark:text-blue-300 shadow-sm ring-2 ring-blue-500/20'
+                            : 'border-emerald-600 bg-emerald-50/70 dark:bg-emerald-950/60 text-emerald-900 dark:text-emerald-300 shadow-sm ring-2 ring-emerald-500/20' 
                           : 'border-gray-200 hover:bg-gray-50 text-gray-700 dark:text-gray-300 dark:border-slate-700'
                       }`}
                     >
-                      <method.icon className={`w-5 h-5 ${selectedPayment === method.id ? 'text-emerald-600' : 'text-gray-500'}`} />
+                      <method.icon className={`w-5 h-5 ${selectedPayment === method.id ? (method.id === 'PAYPAL' ? 'text-[#0070ba]' : 'text-emerald-600') : 'text-gray-500'}`} />
                       <span className="font-extrabold text-xs">{method.label}</span>
                       <span className="text-[9px] text-gray-400 leading-tight">{method.desc}</span>
                     </button>
@@ -1504,6 +1509,32 @@ export default function CustomerScanGo() {
                   </div>
                 )}
 
+                {/* PayPal Gateway Section */}
+                {selectedPayment === 'PAYPAL' && (
+                  <PayPalButtonSection
+                    amountInr={grandTotal}
+                    description={`SmartMart Self-Checkout Turnstile Pass (${scannedCart.length} items)`}
+                    disabled={isProcessingPayment}
+                    onSuccess={(paymentResult) => {
+                      setIsProcessingPayment(false);
+                      setPaymentNotice(null);
+                      processOrderSuccess(paymentResult.method || 'PayPal Gateway', paymentResult.paymentId);
+                    }}
+                    onCancel={(msg) => {
+                      setPaymentNotice({
+                        type: 'info',
+                        message: msg || 'PayPal checkout was cancelled. You can retry below.'
+                      });
+                    }}
+                    onFailure={(err) => {
+                      setPaymentNotice({
+                        type: 'error',
+                        message: `PayPal Error: ${err}`
+                      });
+                    }}
+                  />
+                )}
+
                 {/* Wallet Simulation */}
                 {selectedPayment === 'WALLET' && (
                   <div className="bg-purple-50 dark:bg-purple-950/50 p-4 rounded-2xl border border-purple-200 dark:border-purple-900 text-center space-y-1">
@@ -1532,7 +1563,8 @@ export default function CustomerScanGo() {
                   </div>
                 )}
 
-                {/* Confirm Pay Button */}
+                {/* Confirm Pay Button (hidden for PayPal since PayPalButtonSection renders its own Smart Buttons) */}
+                {selectedPayment !== 'PAYPAL' && (
                 <Button
                   className={`w-full h-12 font-extrabold text-sm shadow-md transition-all flex items-center justify-center gap-2 ${
                     selectedPayment !== 'WALLET' 
@@ -1560,6 +1592,7 @@ export default function CustomerScanGo() {
                     </>
                   )}
                 </Button>
+                )}
               </div>
             )}
 

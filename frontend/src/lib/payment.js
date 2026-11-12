@@ -60,7 +60,14 @@ export const initiateUpiPayment = ({
   }
 };
 
-import { apiCreateRazorpayOrder, apiVerifyRazorpaySignature, apiGetRazorpayKey } from '../services/api';
+import {
+  apiCreateRazorpayOrder,
+  apiVerifyRazorpaySignature,
+  apiGetRazorpayKey,
+  apiGetPayPalConfig,
+  apiCreatePayPalOrder,
+  apiCapturePayPalOrder
+} from '../services/api';
 
 /**
  * Dynamically loads the official Razorpay Checkout SDK script
@@ -258,6 +265,224 @@ export const openRazorpayCheckout = async ({
   } catch (err) {
     console.error('Razorpay process error:', err);
     if (onFailure) onFailure(err.message || 'Payment initiation failed');
+    return false;
+  }
+};
+
+/**
+ * Dynamically loads the official PayPal JS SDK script
+ */
+export const loadPayPalScript = ({ clientId = 'sb', currency = 'USD' } = {}) => {
+  return new Promise((resolve) => {
+    if (typeof window === 'undefined') {
+      resolve(false);
+      return;
+    }
+
+    const existing = document.getElementById('paypal-js-sdk');
+    const desiredSrc = `https://www.paypal.com/sdk/js?client-id=${encodeURIComponent(clientId)}&currency=${encodeURIComponent(currency)}&intent=capture`;
+
+    if (existing) {
+      if (existing.src === desiredSrc && window.paypal?.Buttons) {
+        resolve(true);
+        return;
+      }
+      existing.remove();
+      if (window.paypal) {
+        try { delete window.paypal; } catch { window.paypal = undefined; }
+      }
+    }
+
+    const script = document.createElement('script');
+    script.id = 'paypal-js-sdk';
+    script.src = desiredSrc;
+    script.async = true;
+    script.onload = () => resolve(Boolean(window.paypal?.Buttons));
+    script.onerror = () => resolve(false);
+    document.body.appendChild(script);
+  });
+};
+
+/**
+ * Converts INR amount to PayPal settlement currency (default USD)
+ */
+export const convertInrToPayPalAmount = (amountInr, rate = 84, currency = 'USD') => {
+  const num = Number(amountInr) || 0;
+  if (currency === 'INR') return num.toFixed(2);
+  return Math.max(0.01, num / (Number(rate) || 84)).toFixed(2);
+};
+
+/**
+ * Renders official PayPal Smart Payment Buttons into a DOM container.
+ * Uses backend REST v2 /create-order and /capture-order when live credentials are configured.
+ * Returns { mode: 'LIVE' | 'SANDBOX_DEMO', usdAmount, currency, cleanup }
+ */
+export const mountPayPalButtons = async ({
+  container,
+  amountInr,
+  orderId = `ORD_${Date.now()}`,
+  description = 'SmartMart Supermarket Payment',
+  onSuccess,
+  onFailure,
+  onCancel
+}) => {
+  const config = await apiGetPayPalConfig();
+  const currency = config?.currency || 'USD';
+  const rate = config?.inrToUsdRate || 84;
+  const rateSource = config?.rateSource || 'fallback';
+  const convertedAmount = convertInrToPayPalAmount(amountInr, rate, currency);
+
+  if (!config?.isConfigured || !container) {
+    return {
+      mode: 'SANDBOX_DEMO',
+      convertedAmount,
+      currency,
+      rate,
+      rateSource,
+      cleanup: () => {}
+    };
+  }
+
+  const loaded = await loadPayPalScript({
+    clientId: config.clientId,
+    currency
+  });
+
+  if (!loaded || !window.paypal?.Buttons) {
+    return {
+      mode: 'SANDBOX_DEMO',
+      convertedAmount,
+      currency,
+      rate,
+      rateSource,
+      cleanup: () => {}
+    };
+  }
+
+  container.innerHTML = '';
+  let cancelled = false;
+
+  const buttons = window.paypal.Buttons({
+    style: {
+      layout: 'vertical',
+      color: 'blue',
+      shape: 'pill',
+      label: 'paypal',
+      height: 44
+    },
+    createOrder: async () => {
+      const orderResp = await apiCreatePayPalOrder({
+        amountInr: Number(amountInr),
+        currency,
+        receipt: String(orderId).substring(0, 40),
+        description
+      });
+      if (!orderResp?.success || !orderResp?.order?.id || orderResp.isSimulated) {
+        throw new Error(orderResp?.reason || 'Unable to create live PayPal order');
+      }
+      return orderResp.order.id;
+    },
+    onApprove: async (data) => {
+      if (cancelled) return;
+      try {
+        const captureResp = await apiCapturePayPalOrder({ orderID: data.orderID });
+        if (!captureResp?.success) {
+          throw new Error(captureResp?.message || 'PayPal payment capture failed');
+        }
+        if (onSuccess) {
+          onSuccess({
+            paymentId: captureResp.captureId || data.orderID,
+            orderId: captureResp.orderId || data.orderID,
+            status: 'PAID',
+            method: 'PayPal Gateway',
+            payerEmail: captureResp.payerEmail || '',
+            verified: true,
+            timestamp: new Date().toISOString()
+          });
+        }
+      } catch (err) {
+        if (onFailure) onFailure(err.message || 'PayPal capture failed');
+      }
+    },
+    onCancel: () => {
+      if (onCancel) onCancel('Payment cancelled by customer');
+    },
+    onError: (err) => {
+      console.error('PayPal SDK error:', err);
+      if (onFailure) onFailure(err?.message || 'PayPal checkout encountered an error');
+    }
+  });
+
+  if (buttons.isEligible()) {
+    await buttons.render(container);
+  } else {
+    return {
+      mode: 'SANDBOX_DEMO',
+      convertedAmount,
+      currency,
+      rate,
+      rateSource,
+      cleanup: () => {}
+    };
+  }
+
+  return {
+    mode: 'LIVE',
+    convertedAmount,
+    currency,
+    rate,
+    rateSource,
+    cleanup: () => {
+      cancelled = true;
+      try { buttons.close(); } catch {}
+    }
+  };
+};
+
+/**
+ * Completes a PayPal payment via backend create + capture (used when running in Sandbox Demo mode)
+ */
+export const processPayPalSandboxCheckout = async ({
+  amountInr,
+  orderId = `ORD_${Date.now()}`,
+  description = 'SmartMart Supermarket Payment',
+  onSuccess,
+  onFailure
+}) => {
+  try {
+    const numAmount = Number(amountInr);
+    if (!amountInr || isNaN(numAmount) || numAmount < 1) {
+      if (onFailure) onFailure('Payment amount must be at least ₹1.00');
+      return false;
+    }
+
+    const orderResp = await apiCreatePayPalOrder({
+      amountInr: numAmount,
+      receipt: String(orderId).substring(0, 40),
+      description
+    });
+
+    const createdId = orderResp?.order?.id || `PAYPAL_SIM_${Date.now()}`;
+    const captureResp = await apiCapturePayPalOrder({ orderID: createdId });
+
+    if (!captureResp?.success) {
+      throw new Error(captureResp?.message || 'PayPal sandbox capture failed');
+    }
+
+    if (onSuccess) {
+      onSuccess({
+        paymentId: captureResp.captureId || createdId,
+        orderId: captureResp.orderId || createdId,
+        status: 'PAID',
+        method: captureResp.isSimulated ? 'PayPal (Sandbox Verified)' : 'PayPal Gateway',
+        verified: true,
+        timestamp: new Date().toISOString()
+      });
+    }
+    return true;
+  } catch (err) {
+    console.error('PayPal process error:', err);
+    if (onFailure) onFailure(err.message || 'PayPal payment initiation failed');
     return false;
   }
 };

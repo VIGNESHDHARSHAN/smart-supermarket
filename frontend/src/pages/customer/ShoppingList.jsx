@@ -28,10 +28,12 @@ import {
   ExternalLink,
   Zap,
   AlertTriangle,
-  Loader2
+  Loader2,
+  Globe
 } from 'lucide-react';
 import StoreAisleMapModal from '../../components/customer/StoreAisleMapModal';
 import { ProductImage } from '../../components/ui/ProductImage';
+import { PayPalButtonSection } from '../../components/customer/PayPalButtonSection';
 import { isMobileDevice, openRazorpayCheckout } from '../../lib/payment';
 
 export default function ShoppingList() {
@@ -636,7 +638,7 @@ export default function ShoppingList() {
                   </span>
                 </div>
 
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
+                <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 text-xs">
                   <button
                     type="button"
                     onClick={() => { setPaymentMode('RAZORPAY'); setPaymentNotice(null); }}
@@ -681,6 +683,20 @@ export default function ShoppingList() {
 
                   <button
                     type="button"
+                    onClick={() => { setPaymentMode('PAYPAL'); setPaymentNotice(null); }}
+                    className={`p-2.5 rounded-xl border flex flex-col items-center justify-center font-bold transition-all text-center gap-1 ${
+                      paymentMode === 'PAYPAL' 
+                        ? 'border-[#0070ba] bg-blue-50 dark:bg-blue-950/70 text-[#003087] dark:text-blue-300 ring-2 ring-blue-500/20 shadow-xs' 
+                        : 'border-gray-200 dark:border-slate-700 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-slate-800'
+                    }`}
+                  >
+                    <Globe className={`w-4 h-4 ${paymentMode === 'PAYPAL' ? 'text-[#0070ba]' : 'text-gray-400'}`} />
+                    <span className="text-xs font-black">PayPal</span>
+                    <span className="text-[9px] text-gray-500 dark:text-gray-400 font-normal">Global / Cards</span>
+                  </button>
+
+                  <button
+                    type="button"
                     onClick={() => { setPaymentMode('Cash'); setPaymentNotice(null); }}
                     className={`p-2.5 rounded-xl border flex flex-col items-center justify-center font-bold transition-all text-center gap-1 ${
                       paymentMode === 'Cash' 
@@ -717,6 +733,58 @@ export default function ShoppingList() {
                     <div className="text-[10px] text-emerald-800 dark:text-emerald-300 bg-emerald-100/60 dark:bg-emerald-900/50 py-1 px-2.5 rounded-lg font-mono">
                       🔒 Zero convenience fee • 256-bit Bank Grade Encryption • Instant Confirmation
                     </div>
+                  </div>
+                )}
+
+                {/* PayPal Gateway Section */}
+                {paymentMode === 'PAYPAL' && isStoreOpen && (
+                  <div className="mt-3">
+                    <PayPalButtonSection
+                      amountInr={grandTotal}
+                      description={`SmartMart ${fulfillmentType} Order (${currentList.length} items)`}
+                      disabled={isPlacingOrder || !isStoreOpen}
+                      onSuccess={(paymentResult) => {
+                        const targetAddress = customAddress.trim() || selectedAddress;
+                        placeCustomerOrder({
+                          type: fulfillmentType,
+                          items: currentList,
+                          deliveryDetails: {
+                            address: targetAddress,
+                            speed: deliverySpeed,
+                            instructions: deliveryNotes
+                          },
+                          takeawayDetails: {
+                            counter: pickupCounter,
+                            slot: pickupSlot
+                          },
+                          selfCheckoutDetails: {
+                            gateNumber: 'SmartGate 01'
+                          },
+                          paymentMode: paymentResult.method || 'PayPal Gateway',
+                          transactionId: paymentResult.paymentId,
+                          subtotal,
+                          discount,
+                          deliveryFee,
+                          tax,
+                          grandTotal
+                        });
+                        setIsPlacingOrder(false);
+                        setPaymentNotice(null);
+                        navigate('/customer/orders');
+                      }}
+                      onCancel={(msg) => {
+                        setPaymentNotice({
+                          type: 'info',
+                          message: msg || 'PayPal checkout was cancelled. You can retry below.'
+                        });
+                      }}
+                      onFailure={(err) => {
+                        setPaymentNotice({
+                          type: 'error',
+                          message: `PayPal Error: ${err}`
+                        });
+                      }}
+                    />
                   </div>
                 )}
 
@@ -767,7 +835,8 @@ export default function ShoppingList() {
                 </div>
               )}
 
-              {/* Submit Button */}
+              {/* Submit Button (hidden when PayPal is active & store is open, since PayPalButtonSection renders its own buttons) */}
+              {(paymentMode !== 'PAYPAL' || !isStoreOpen) && (
               <Button
                 className={`w-full h-14 text-base font-extrabold flex items-center justify-between px-6 shadow-lg ${
                   !isStoreOpen 
@@ -797,6 +866,7 @@ export default function ShoppingList() {
                   ₹{grandTotal.toFixed(2)} <ArrowRight className="w-5 h-5" />
                 </span>
               </Button>
+              )}
 
             </div>
 

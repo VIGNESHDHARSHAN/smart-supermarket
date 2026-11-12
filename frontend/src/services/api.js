@@ -212,6 +212,103 @@ export const apiVerifyRazorpaySignature = async (payload) => {
 };
 
 /**
+ * Fetch Public PayPal Config (Client ID, Currency, INR->USD rate)
+ */
+export const apiGetPayPalConfig = async () => {
+  try {
+    const res = await customFetch(`${API_BASE_URL}/payment/paypal/config`);
+    if (!res.ok) throw new Error('Failed to fetch PayPal config');
+    return await res.json();
+  } catch (err) {
+    const envClientId = (import.meta.env.VITE_PAYPAL_CLIENT_ID || '').trim();
+    return {
+      clientId: envClientId || 'sb',
+      currency: 'USD',
+      inrToUsdRate: 84,
+      mode: 'sandbox',
+      isConfigured: Boolean(envClientId && envClientId !== 'sb')
+    };
+  }
+};
+
+/**
+ * Create PayPal Order on Backend
+ */
+export const apiCreatePayPalOrder = async (payload) => {
+  try {
+    const res = await customFetch(`${API_BASE_URL}/payment/paypal/create-order`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    if (!res.ok) {
+      const errData = await res.json().catch(() => ({}));
+      throw new Error(errData.error || 'Failed to create PayPal order');
+    }
+    return await res.json();
+  } catch (err) {
+    console.warn('API createPayPalOrder error:', err.message);
+    return null;
+  }
+};
+
+/**
+ * Capture PayPal Order on Backend
+ */
+export const apiCapturePayPalOrder = async (payload) => {
+  try {
+    const res = await customFetch(`${API_BASE_URL}/payment/paypal/capture-order`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    const data = await res.json();
+    return data;
+  } catch (err) {
+    console.warn('API capturePayPalOrder error:', err.message);
+    return { success: false, message: err.message };
+  }
+};
+
+/**
+ * Check Generative AI Chatbot Configuration Status
+ */
+export const apiGetAIStatus = async () => {
+  try {
+    const res = await customFetch(`${API_BASE_URL}/ai/status`);
+    if (!res.ok) throw new Error('Failed to fetch AI status');
+    return await res.json();
+  } catch (err) {
+    return { configured: false, provider: 'local', model: 'rule-based' };
+  }
+};
+
+/**
+ * Send message to Generative AI Chatbot backend
+ */
+export const apiSendAIChat = async (payload) => {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 20000);
+  try {
+    const res = await customFetch(`${API_BASE_URL}/ai/chat`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      signal: controller.signal,
+      body: JSON.stringify(payload)
+    });
+    clearTimeout(timeout);
+    if (!res.ok) {
+      return { success: false, fallback: true };
+    }
+    return await res.json();
+  } catch (err) {
+    clearTimeout(timeout);
+    console.warn('API sendAIChat fallback:', err.message);
+    return { success: false, fallback: true };
+  }
+};
+
+/**
  * Fetch All Delivery Partners
  */
 export const apiFetchDeliveryPartners = async () => {

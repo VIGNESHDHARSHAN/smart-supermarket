@@ -26,6 +26,7 @@ import { useLanguage } from '../../context/LanguageContext';
 import { useTheme } from '../../context/ThemeContext';
 import { soundEffects } from '../../lib/audio';
 import { generateAIResponse } from '../../lib/aiChatEngine';
+import { apiGetAIStatus, apiSendAIChat } from '../../services/api';
 import StoreAisleMapModal from './StoreAisleMapModal';
 
 export default function AIChatbotModal({ isOpen, onClose }) {
@@ -77,6 +78,16 @@ export default function AIChatbotModal({ isOpen, onClose }) {
   ]);
   const [isTyping, setIsTyping] = useState(false);
   const [mapModalProduct, setMapModalProduct] = useState(null);
+  const [aiStatus, setAiStatus] = useState({ configured: false, provider: 'local', model: 'rule-based' });
+
+  useEffect(() => {
+    if (!isOpen) return;
+    let active = true;
+    apiGetAIStatus().then((status) => {
+      if (active && status) setAiStatus(status);
+    });
+    return () => { active = false; };
+  }, [isOpen]);
 
   const messagesEndRef = useRef(null);
   const recognitionRef = useRef(null);
@@ -139,7 +150,7 @@ export default function AIChatbotModal({ isOpen, onClose }) {
     };
   }, [isOpen]);
 
-  const handleSendMessage = useCallback((textToSend) => {
+  const handleSendMessage = useCallback(async (textToSend) => {
     const query = (textToSend || inputMessage).trim();
     if (!query) return;
 
@@ -199,80 +210,139 @@ export default function AIChatbotModal({ isOpen, onClose }) {
       }, 3000);
     }
 
-    setTimeout(() => {
-      const aiResponse = generateAIResponse(query, {
-        products,
-        orders,
-        popularRecipes,
-        shoppingList,
-        language,
-        t
-      });
+    const compactProducts = products.slice(0, 40).map((p) => ({
+      id: p.id,
+      name: p.name,
+      price: p.price,
+      aisle: p.aisle
+    }));
+    const compactOrders = orders.slice(0, 5).map((o) => ({
+      id: o.id,
+      status: o.status,
+      type: o.type,
+      grandTotal: o.grandTotal,
+      itemsCount: o.items?.length || 0
+    }));
+    const compactCart = shoppingList.slice(0, 20).map((item) => ({
+      name: item.name,
+      quantity: item.quantity,
+      price: item.price
+    }));
 
-      setIsTyping(false);
+    let aiResponse = null;
+    try {
+      try {
+        const llmResp = await apiSendAIChat({
+          message: query,
+          history: messages.slice(-8).map((m) => ({ sender: m.sender, text: m.text })),
+          language,
+          context: {
+            clientTime: new Date().toLocaleString(),
+            products: compactProducts,
+            orders: compactOrders,
+            shoppingList: compactCart
+          }
+        });
+
+        if (llmResp?.success && llmResp.text) {
+          const matchedProducts = Array.isArray(llmResp.matchedProductIds)
+            ? llmResp.matchedProductIds
+                .map((pid) => products.find((p) => String(p.id) === String(pid)))
+                .filter(Boolean)
+            : [];
+
+          aiResponse = {
+            id: 'b_' + Date.now(),
+            sender: 'bot',
+            type: matchedProducts.length > 0 ? 'products' : 'text',
+            text: llmResp.text,
+            spokenText: llmResp.spokenText || llmResp.text,
+            products: matchedProducts,
+            suggestions: llmResp.suggestions || [],
+            provider: llmResp.provider,
+            timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+          };
+        }
+      } catch {
+        // Fall back to local engine below
+      }
+
+      if (!aiResponse) {
+        aiResponse = generateAIResponse(query, {
+          products,
+          orders,
+          popularRecipes,
+          shoppingList,
+          language,
+          t
+        });
+      }
+
       setMessages(prev => [...prev, aiResponse]);
+    } finally {
+      setIsTyping(false);
+    }
 
-      const spokenText = aiResponse.spokenText || aiResponse.text;
+    const spokenText = aiResponse.spokenText || aiResponse.text;
 
-      // Update Live Caption for AI
-      if (liveCaptionEnabled) {
+    // Update Live Caption for AI
+    if (liveCaptionEnabled) {
+      setLiveCaption({
+        active: true,
+        type: 'ai',
+        text: spokenText,
+        isInterim: false
+      });
+    }
+
+    // Speak response if voiceEnabled
+    if (voiceEnabled && spokenText) {
+      setIsAiSpeaking(true);
+      soundEffects.speakText(spokenText, currentLangMeta?.speechLang || 'en-US', {
+        onStart: () => {
+          setIsAiSpeaking(true);
+          if (liveCaptionEnabled) {
+            setLiveCaption({
+              active: true,
+              type: 'ai',
+              text: spokenText,
+              isInterim: false
+            });
+          }
+        },
+        onEnd: () => {
+          setIsAiSpeaking(false);
+          clearTimeout(captionClearTimerRef.current);
+          captionClearTimerRef.current = setTimeout(() => {
+            setLiveCaption(prev => prev.type === 'ai' ? { ...prev, active: false } : prev);
+          }, 4000);
+        },
+        onError: () => {
+          setIsAiSpeaking(false);
+          clearTimeout(captionClearTimerRef.current);
+          captionClearTimerRef.current = setTimeout(() => {
+            setLiveCaption(prev => prev.type === 'ai' ? { ...prev, active: false } : prev);
+          }, 3000);
+        }
+      });
+    } else {
+      // Voice is muted or disabled: do not fake speaking
+      setIsAiSpeaking(false);
+      soundEffects.playNotificationPing();
+      if (liveCaptionEnabled && spokenText) {
         setLiveCaption({
           active: true,
           type: 'ai',
           text: spokenText,
           isInterim: false
         });
+        clearTimeout(captionClearTimerRef.current);
+        captionClearTimerRef.current = setTimeout(() => {
+          setLiveCaption(prev => prev.type === 'ai' ? { ...prev, active: false } : prev);
+        }, 3500);
       }
-
-      // Speak response if voiceEnabled
-      if (voiceEnabled && spokenText) {
-        setIsAiSpeaking(true);
-        soundEffects.speakText(spokenText, currentLangMeta?.speechLang || 'en-US', {
-          onStart: () => {
-            setIsAiSpeaking(true);
-            if (liveCaptionEnabled) {
-              setLiveCaption({
-                active: true,
-                type: 'ai',
-                text: spokenText,
-                isInterim: false
-              });
-            }
-          },
-          onEnd: () => {
-            setIsAiSpeaking(false);
-            clearTimeout(captionClearTimerRef.current);
-            captionClearTimerRef.current = setTimeout(() => {
-              setLiveCaption(prev => prev.type === 'ai' ? { ...prev, active: false } : prev);
-            }, 4000);
-          },
-          onError: () => {
-            setIsAiSpeaking(false);
-            clearTimeout(captionClearTimerRef.current);
-            captionClearTimerRef.current = setTimeout(() => {
-              setLiveCaption(prev => prev.type === 'ai' ? { ...prev, active: false } : prev);
-            }, 3000);
-          }
-        });
-      } else {
-        // Voice is muted or disabled: do not fake speaking
-        setIsAiSpeaking(false);
-        soundEffects.playNotificationPing();
-        if (liveCaptionEnabled && spokenText) {
-          setLiveCaption({
-            active: true,
-            type: 'ai',
-            text: spokenText,
-            isInterim: false
-          });
-          clearTimeout(captionClearTimerRef.current);
-          captionClearTimerRef.current = setTimeout(() => {
-            setLiveCaption(prev => prev.type === 'ai' ? { ...prev, active: false } : prev);
-          }, 3500);
-        }
-      }
-    }, 500);
-  }, [inputMessage, products, orders, popularRecipes, shoppingList, language, t, liveCaptionEnabled, voiceEnabled, currentLangMeta]);
+    }
+  }, [inputMessage, products, orders, popularRecipes, shoppingList, language, t, liveCaptionEnabled, voiceEnabled, currentLangMeta, messages]);
 
   // Stop active speech recognition safely and submit any pending spoken text
   const stopListening = useCallback(() => {
@@ -550,7 +620,7 @@ export default function AIChatbotModal({ isOpen, onClose }) {
                   Gemma • SmartMart AI Concierge
                 </h3>
                 <span className="bg-emerald-400 text-slate-900 text-[10px] font-black px-2 py-0.5 rounded-full uppercase tracking-wider shadow-xs">
-                  Active
+                  {aiStatus.configured ? `✨ ${aiStatus.provider} AI` : 'Active'}
                 </span>
               </div>
               <p className="text-xs text-primary-100/90 flex items-center gap-1.5 mt-0.5">
@@ -781,7 +851,21 @@ export default function AIChatbotModal({ isOpen, onClose }) {
                     ? 'bg-primary-600 text-white rounded-br-xs shadow-md font-medium' 
                     : 'bg-white dark:bg-slate-900 text-gray-800 dark:text-gray-100 rounded-bl-xs shadow-sm border border-gray-200 dark:border-slate-800'
                 }`}>
-                  <p className="leading-relaxed">{msg.text}</p>
+                  <div className="leading-relaxed whitespace-pre-line space-y-1">
+                    {String(msg.text || '')
+                      .replace(/^###\s+/gm, '')
+                      .replace(/^---\s*$/gm, '')
+                      .split(/(\*\*[^*]+\*\*)/g)
+                      .map((part, idx) =>
+                        part.startsWith('**') && part.endsWith('**') ? (
+                          <strong key={idx} className="font-bold">
+                            {part.slice(2, -2)}
+                          </strong>
+                        ) : (
+                          <React.Fragment key={idx}>{part}</React.Fragment>
+                        )
+                      )}
+                  </div>
 
                   {/* Recipe Card Component */}
                   {msg.type === 'recipe' && msg.recipe && (
