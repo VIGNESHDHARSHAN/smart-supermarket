@@ -25,7 +25,6 @@ import { useSupermarket } from '../../context/SupermarketContext';
 import { useLanguage } from '../../context/LanguageContext';
 import { useTheme } from '../../context/ThemeContext';
 import { soundEffects } from '../../lib/audio';
-import { generateAIResponse } from '../../lib/aiChatEngine';
 import { apiGetAIStatus, apiSendAIChat } from '../../services/api';
 import StoreAisleMapModal from './StoreAisleMapModal';
 
@@ -33,7 +32,6 @@ export default function AIChatbotModal({ isOpen, onClose }) {
   const { 
     products, 
     orders, 
-    popularRecipes, 
     addToShoppingList, 
     addRecipeToCart, 
     shoppingList,
@@ -89,6 +87,7 @@ export default function AIChatbotModal({ isOpen, onClose }) {
     return () => { active = false; };
   }, [isOpen]);
 
+  const requestInFlight = useRef(false);
   const messagesEndRef = useRef(null);
   const recognitionRef = useRef(null);
   const silenceTimerRef = useRef(null);
@@ -152,7 +151,8 @@ export default function AIChatbotModal({ isOpen, onClose }) {
 
   const handleSendMessage = useCallback(async (textToSend) => {
     const query = (textToSend || inputMessage).trim();
-    if (!query) return;
+    if (!query || requestInFlight.current) return;
+    requestInFlight.current = true;
 
     // Direct stop recognition and cleanup
     if (silenceTimerRef.current) {
@@ -234,7 +234,7 @@ export default function AIChatbotModal({ isOpen, onClose }) {
       try {
         const llmResp = await apiSendAIChat({
           message: query,
-          history: messages.slice(-8).map((m) => ({ sender: m.sender, text: m.text })),
+          history: messages.filter(m => m.id !== 'm_welcome' && !m.error).slice(-20).map((m) => ({ sender: m.sender, text: m.text })),
           language,
           context: {
             clientTime: new Date().toLocaleString(),
@@ -263,23 +263,18 @@ export default function AIChatbotModal({ isOpen, onClose }) {
             timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
           };
         }
-      } catch {
-        // Fall back to local engine below
-      }
-
-      if (!aiResponse) {
-        aiResponse = generateAIResponse(query, {
-          products,
-          orders,
-          popularRecipes,
-          shoppingList,
-          language,
-          t
-        });
+      } catch (err) {
+        aiResponse = {
+          id: 'b_' + Date.now(), sender: 'bot', type: 'text', error: true,
+          text: err.message || 'The AI service is unavailable. Please try again.',
+          suggestions: [query],
+          timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+        };
       }
 
       setMessages(prev => [...prev, aiResponse]);
     } finally {
+      requestInFlight.current = false;
       setIsTyping(false);
     }
 
@@ -342,7 +337,7 @@ export default function AIChatbotModal({ isOpen, onClose }) {
         }, 3500);
       }
     }
-  }, [inputMessage, products, orders, popularRecipes, shoppingList, language, t, liveCaptionEnabled, voiceEnabled, currentLangMeta, messages]);
+  }, [inputMessage, products, orders, shoppingList, language, t, liveCaptionEnabled, voiceEnabled, currentLangMeta, messages]);
 
   // Stop active speech recognition safely and submit any pending spoken text
   const stopListening = useCallback(() => {
@@ -620,7 +615,7 @@ export default function AIChatbotModal({ isOpen, onClose }) {
                   Gemma • SmartMart AI Concierge
                 </h3>
                 <span className="bg-emerald-400 text-slate-900 text-[10px] font-black px-2 py-0.5 rounded-full uppercase tracking-wider shadow-xs">
-                  {aiStatus.configured ? `✨ ${aiStatus.provider} AI` : 'Active'}
+                  {aiStatus.configured ? `✨ ${aiStatus.provider} AI` : 'AI unavailable'}
                 </span>
               </div>
               <p className="text-xs text-primary-100/90 flex items-center gap-1.5 mt-0.5">
@@ -1158,9 +1153,10 @@ export default function AIChatbotModal({ isOpen, onClose }) {
             {/* Input Text Box */}
             <input
               type="text"
+              maxLength={12000}
               value={inputMessage}
               onChange={(e) => setInputMessage(e.target.value)}
-              placeholder={isListening ? t('ai_listening', 'Listening to your voice...') : t('ai_ask_placeholder', 'Ask AI (e.g. "Where is milk?", "Paneer recipe", "Store timings")...')}
+              placeholder={isListening ? t('ai_listening', 'Listening to your voice...') : t('ai_general_placeholder', 'Ask anything ? science, coding, recipes, shopping...')}
               className={`flex-1 h-12 px-4 rounded-2xl bg-gray-50 dark:bg-slate-800 border text-sm text-gray-900 dark:text-white placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-primary-500 transition-all ${
                 isListening ? 'border-red-400 dark:border-red-500 ring-2 ring-red-300/30' : 'border-gray-200 dark:border-slate-700'
               }`}
@@ -1169,7 +1165,7 @@ export default function AIChatbotModal({ isOpen, onClose }) {
             {/* Send Button */}
             <button
               type="submit"
-              disabled={!inputMessage.trim()}
+              disabled={isTyping || !inputMessage.trim()}
               className="h-12 px-5 bg-primary-600 hover:bg-primary-700 disabled:opacity-50 text-white rounded-2xl font-bold text-sm shadow-md transition-all flex items-center gap-1.5 active:scale-95"
             >
               <span>{t('ai_send', 'Send')}</span>

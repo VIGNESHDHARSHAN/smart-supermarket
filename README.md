@@ -34,6 +34,16 @@ smart-supermarket/
 
 ## Quick Start
 
+### AI chatbot
+
+The chatbot sends questions and the last 20 conversation messages to a real AI provider through the backend. It supports general questions, coding, writing, recipes, and supermarket help. It has no live web search. Product suggestions use the catalog supplied by the app.
+
+Set `GEMINI_API_KEY` and `GEMINI_MODEL` in `backend/.env`, then restart the backend. Optional Groq and OpenAI settings are listed in `backend/.env.example`; provider priority is Gemini, Groq, then OpenAI. Keep API keys on the backend, never in frontend environment variables. Provider usage and quota limits apply.
+
+`GET /api/ai/status` reports configuration, not provider health. Chat requests allow 45 seconds for the provider and display a retryable error if the provider is unavailable, misconfigured, or over quota. They no longer silently return canned shopping responses.
+
+Run chatbot regression checks with `node --test backend/tests/ai.test.js` (no API key or network provider calls required).
+
 ### 1. Install Dependencies
 
 You can install all dependencies from the root:

@@ -288,7 +288,7 @@ export const apiGetAIStatus = async () => {
  */
 export const apiSendAIChat = async (payload) => {
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 20000);
+  const timeout = setTimeout(() => controller.abort(), 50000);
   try {
     const res = await customFetch(`${API_BASE_URL}/ai/chat`, {
       method: 'POST',
@@ -296,15 +296,17 @@ export const apiSendAIChat = async (payload) => {
       signal: controller.signal,
       body: JSON.stringify(payload)
     });
-    clearTimeout(timeout);
-    if (!res.ok) {
-      return { success: false, fallback: true };
+    const data = await res.json();
+    if (!res.ok || !data.success) {
+      throw new Error(data.error || 'The AI service is unavailable. Please try again.');
     }
-    return await res.json();
+    return data;
   } catch (err) {
+    if (err.name === 'AbortError') throw new Error('The AI took too long to respond. Please try again.');
+    if (err instanceof TypeError || err instanceof SyntaxError) throw new Error('Cannot connect to the AI service. Check that the backend is running.');
+    throw err;
+  } finally {
     clearTimeout(timeout);
-    console.warn('API sendAIChat fallback:', err.message);
-    return { success: false, fallback: true };
   }
 };
 
